@@ -59,8 +59,9 @@ Rules:
 4) "## Port" is REQUIRED (and must be a single integer) when Type is "process". Omit it entirely when Type is "docker" (a docker/docker-compose command defines its own ports).
 5) If the project has multiple runnable services (e.g. a docker-compose stack with several containers), prefer Type "docker" with the single command that starts the whole stack, rather than picking just one service.
 6) Prefer a command that requires no interactive input.
-7) Do not run the command yourself — only inspect the repository and write the file.
-8) If you cannot confidently determine how to run this project, still write your best-effort guess and add a note under "## Notes" explaining the uncertainty — do not leave the file unwritten.`;
+7) Do not run the command yourself — only inspect the repository and write the file. You MAY do cheap availability checks (e.g. \`command -v python3\`) to confirm an interpreter/binary actually resolves in this shell before naming it in the Command — that is not "running" the app.
+8) Verify the exact binary you name resolves in this environment, not just a common convention from the project's own docs/README. In particular, many Linux systems only have \`python3\` on PATH, not \`python\` — check with \`command -v python3\` / \`command -v python\` and use whichever actually resolves (same idea applies to e.g. \`node\` vs \`nodejs\`, \`pip3\` vs \`pip\`).
+9) If you cannot confidently determine how to run this project, still write your best-effort guess and add a note under "## Notes" explaining the uncertainty — do not leave the file unwritten.`;
 
   const { resultText } = await executeSubagentQuery({
     taskId,

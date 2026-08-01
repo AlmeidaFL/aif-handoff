@@ -100,6 +100,9 @@ const REQUEST_TIMEOUT_MS = 15_000;
 export const PLAN_FAST_FIX_TIMEOUT_MS = 200_000;
 const CHAT_TIMEOUT_MS = 300_000;
 const IMPORT_ROADMAP_TIMEOUT_MS = 300_000;
+// /run/inspect runs a single-pass LLM subagent call synchronously (like
+// fast_fix), so it needs the same longer budget instead of the default.
+const RUN_INSPECT_TIMEOUT_MS = 200_000;
 
 export interface SettingsResponse {
   useSubagents: boolean;
@@ -504,7 +507,7 @@ export const api = {
     };
   }> {
     console.debug("[api] POST /tasks/%s/run/inspect", id);
-    return request(`${API_BASE}/${id}/run/inspect`, { method: "POST" });
+    return request(`${API_BASE}/${id}/run/inspect`, { method: "POST" }, RUN_INSPECT_TIMEOUT_MS);
   },
 
   checkRoadmapStatus(projectId: string): Promise<{ exists: boolean }> {
