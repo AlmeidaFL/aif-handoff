@@ -16,6 +16,7 @@ import {
   useValidateRuntimeProfile,
 } from "@/hooks/useRuntimeProfiles";
 import { RuntimeProfileForm } from "@/components/settings/RuntimeProfileForm";
+import { AgentInstructionsSection } from "@/components/project/AgentInstructionsSection";
 import { formatRuntimeProfileOptionLabel } from "@/lib/runtimeProfiles";
 import { getRuntimeLimitDisplay, runtimeLimitBadgeClassName } from "@/lib/runtimeLimits";
 import { useUsageLimitsEnabled } from "@/hooks/useSettings";
@@ -269,6 +270,20 @@ export function ProjectRuntimeSettings({
         </Button>
       </div>
 
+      {statusMessage && (
+        <p
+          className={`text-xs ${
+            statusVariant === "error"
+              ? "text-red-500"
+              : statusVariant === "success"
+                ? "text-green-500"
+                : "text-muted-foreground"
+          }`}
+        >
+          {statusMessage}
+        </p>
+      )}
+
       <div className="grid gap-2 md:grid-cols-2">
         <div className="space-y-1">
           <p className="text-xs text-muted-foreground">Implementation (default)</p>
@@ -485,6 +500,8 @@ export function ProjectRuntimeSettings({
         )}
       </div>
 
+      <AgentInstructionsSection projectId={project.id} enabled={isOpen} />
+
       <div className="space-y-2 border-t border-border pt-3">
         <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           Global Profiles
@@ -539,20 +556,6 @@ export function ProjectRuntimeSettings({
               </div>
             ))}
           </div>
-        )}
-
-        {statusMessage && (
-          <p
-            className={`mt-2 text-xs ${
-              statusVariant === "error"
-                ? "text-red-500"
-                : statusVariant === "success"
-                  ? "text-green-500"
-                  : "text-muted-foreground"
-            }`}
-          >
-            {statusMessage}
-          </p>
         )}
       </div>
 

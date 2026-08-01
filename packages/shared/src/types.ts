@@ -1,3 +1,5 @@
+import type { CustomizableAgentRole } from "./agentCatalog.js";
+
 export const TASK_STATUSES = [
   "backlog",
   "planning",
@@ -563,6 +565,21 @@ export interface UpdateRuntimeProfileInput {
   headers?: Record<string, string>;
   options?: Record<string, unknown>;
   enabled?: boolean;
+}
+
+export interface AgentCustomization {
+  id: string;
+  projectId: string;
+  agentRole: CustomizableAgentRole;
+  customInstructions: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UpsertAgentCustomizationInput {
+  projectId: string;
+  agentRole: CustomizableAgentRole;
+  customInstructions: string;
 }
 
 export type EffectiveRuntimeProfileSource =

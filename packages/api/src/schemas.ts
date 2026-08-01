@@ -274,3 +274,7 @@ export const runtimeProfileListQuerySchema = z.object({
   enabledOnly: z.string().optional(),
   scope: z.enum(["global", "project", "visible"]).optional(),
 });
+
+export const upsertAgentCustomizationSchema = z.object({
+  customInstructions: z.string().max(4000),
+});

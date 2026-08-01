@@ -22,6 +22,8 @@ import type {
   CreateRuntimeProfileInput,
   UpdateRuntimeProfileInput,
   RuntimeLimitSnapshot,
+  AgentCustomization,
+  CustomizableAgentRole,
 } from "@aif/shared/browser";
 
 export class ApiError extends Error {
@@ -646,6 +648,22 @@ export const api = {
   deleteRuntimeProfile(id: string): Promise<{ success: boolean }> {
     return request(`/runtime-profiles/${id}`, {
       method: "DELETE",
+    });
+  },
+
+  // Agent customizations
+  listAgentCustomizations(projectId: string): Promise<AgentCustomization[]> {
+    return request(`/agent-customizations/${projectId}`);
+  },
+
+  upsertAgentCustomization(
+    projectId: string,
+    agentRole: CustomizableAgentRole,
+    customInstructions: string,
+  ): Promise<AgentCustomization> {
+    return request(`/agent-customizations/${projectId}/${agentRole}`, {
+      method: "PUT",
+      body: JSON.stringify({ customInstructions }),
     });
   },
 

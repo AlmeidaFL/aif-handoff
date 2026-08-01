@@ -758,6 +758,22 @@ const MIGRATIONS: Migration[] = [
       ALTER TABLE tasks ADD COLUMN auto_queue_commit_completed_at TEXT;
     `,
   },
+  {
+    version: 27,
+    description: "Add agent_customizations table for per-project agent instructions",
+    sql: `
+      CREATE TABLE IF NOT EXISTS agent_customizations (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL,
+        agent_role TEXT NOT NULL,
+        custom_instructions TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+        updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS agent_customizations_project_role_idx
+        ON agent_customizations(project_id, agent_role);
+    `,
+  },
 ];
 
 function splitSqlStatements(sqlText: string): string[] {

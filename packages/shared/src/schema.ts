@@ -178,6 +178,24 @@ export const runtimeProfiles = sqliteTable("runtime_profiles", {
 export type RuntimeProfileRow = typeof runtimeProfiles.$inferSelect;
 export type NewRuntimeProfileRow = typeof runtimeProfiles.$inferInsert;
 
+export const agentCustomizations = sqliteTable("agent_customizations", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  projectId: text("project_id").notNull(),
+  agentRole: text("agent_role").notNull(),
+  customInstructions: text("custom_instructions").notNull().default(""),
+  createdAt: text("created_at")
+    .notNull()
+    .default(sql`(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`),
+  updatedAt: text("updated_at")
+    .notNull()
+    .default(sql`(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`),
+});
+
+export type AgentCustomizationRow = typeof agentCustomizations.$inferSelect;
+export type NewAgentCustomizationRow = typeof agentCustomizations.$inferInsert;
+
 export const chatSessions = sqliteTable("chat_sessions", {
   id: text("id")
     .primaryKey()
