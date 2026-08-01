@@ -9,6 +9,7 @@ import {
   formatPreviousFindingsForPrompt,
   parseStructuredSidecarOutput,
 } from "../reviewContract.js";
+import { withAgentCustomInstructions } from "../agentCustomization.js";
 
 const log = logger("reviewer");
 
@@ -180,7 +181,11 @@ ${reviewOutputContract}`;
     fallbackStrategy: useSubagents ? "slash_command" : "none",
     executionMode: useSubagents ? "native_subagents" : "standard",
     sessionReusePolicy: "new_session",
-    systemPromptAppend: scopeConstraint,
+    systemPromptAppend: withAgentCustomInstructions(
+      scopeConstraint,
+      task.projectId,
+      "review-sidecar",
+    ),
   });
   const securityWorkflow = createRuntimeWorkflowSpec({
     workflowKind: "review-security",
@@ -191,7 +196,11 @@ ${reviewOutputContract}`;
     fallbackStrategy: useSubagents ? "slash_command" : "none",
     executionMode: useSubagents ? "native_subagents" : "standard",
     sessionReusePolicy: "new_session",
-    systemPromptAppend: scopeConstraint,
+    systemPromptAppend: withAgentCustomInstructions(
+      scopeConstraint,
+      task.projectId,
+      "security-sidecar",
+    ),
   });
 
   try {

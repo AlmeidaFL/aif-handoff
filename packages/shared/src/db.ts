@@ -52,6 +52,7 @@ function ensureTables(sqlite: Database.Database): void {
       group_name TEXT,
       parallel_enabled INTEGER NOT NULL DEFAULT 0,
       auto_queue_mode INTEGER NOT NULL DEFAULT 0,
+      run_docker_socket_enabled INTEGER NOT NULL DEFAULT 0,
       default_task_runtime_profile_id TEXT,
       default_plan_runtime_profile_id TEXT,
       default_review_runtime_profile_id TEXT,
@@ -758,6 +759,42 @@ const MIGRATIONS: Migration[] = [
       ALTER TABLE tasks ADD COLUMN auto_queue_commit_completed_at TEXT;
     `,
   },
+  {
+    version: 27,
+    description: "Add agent_customizations table for per-project agent instructions",
+    sql: `
+      CREATE TABLE IF NOT EXISTS agent_customizations (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL,
+        agent_role TEXT NOT NULL,
+        custom_instructions TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+        updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS agent_customizations_project_role_idx
+        ON agent_customizations(project_id, agent_role);
+    `,
+  },
+  {
+    version: 28,
+    description: "Add task_runs table and projects.run_docker_socket_enabled for the Run feature",
+    sql: `
+      ALTER TABLE projects ADD COLUMN run_docker_socket_enabled INTEGER NOT NULL DEFAULT 0;
+      CREATE TABLE IF NOT EXISTS task_runs (
+        id TEXT PRIMARY KEY,
+        task_id TEXT NOT NULL,
+        project_id TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'starting',
+        command TEXT NOT NULL,
+        execution_mode TEXT NOT NULL,
+        port INTEGER,
+        exit_code INTEGER,
+        error_message TEXT,
+        started_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+        stopped_at TEXT
+      );
+    `,
+  },
 ];
 
 function splitSqlStatements(sqlText: string): string[] {
@@ -1027,6 +1064,9 @@ function ensureIndexes(sqlite: Database.Database): void {
     "CREATE INDEX IF NOT EXISTS idx_codex_limit_heads_lookup ON codex_limit_heads(account_fingerprint, project_root, limit_id, observed_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_codex_limit_history_head ON codex_limit_history(head_key, observed_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_codex_limit_history_account ON codex_limit_history(account_fingerprint, project_root, limit_id, observed_at DESC)",
+    // Run feature: active-run lookup by project, and task-scoped history lookup.
+    "CREATE INDEX IF NOT EXISTS idx_task_runs_project_status ON task_runs(project_id, status)",
+    "CREATE INDEX IF NOT EXISTS idx_task_runs_task_id ON task_runs(task_id, started_at DESC)",
   ];
 
   for (const ddl of indexDefs) {

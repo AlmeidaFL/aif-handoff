@@ -246,6 +246,34 @@ const envSchema = z.object({
     .default(false),
   AIF_CODEX_LOGIN_BROKER_PORT: z.coerce.number().default(3010),
   AGENT_INTERNAL_URL: z.string().default("http://agent:3010"),
+  AIF_RUN_BROKER_PORT: z.coerce.number().default(3013),
+  AGENT_RUN_INTERNAL_URL: z.string().default("http://agent:3013"),
+  /**
+   * Agent-side gate for Docker-socket-based Run execution. Mounting
+   * /var/run/docker.sock into the agent container is equivalent to root on
+   * the host; this must be explicitly true here AND the project must opt in
+   * (projects.run_docker_socket_enabled) before the run broker will ever
+   * attempt docker-wrapped or docker-compose-based execution. Defaults off.
+   */
+  AIF_AGENT_DOCKER_SOCKET_ENABLED: z
+    .preprocess((value) => {
+      if (typeof value === "string") {
+        const normalized = value.trim().toLowerCase();
+        if (BOOLEAN_TRUE_VALUES.has(normalized)) return true;
+        if (BOOLEAN_FALSE_VALUES.has(normalized)) return false;
+      }
+      return value;
+    }, z.boolean())
+    .default(false),
+  /**
+   * Image used to wrap a "process"-type (raw, non-Docker) run command with
+   * `docker run --network ... -p <port>:<port>` so its port publishes on the
+   * host. Should normally be the agent's own image, since implement-coordinator
+   * already requires that image to have the target project's toolchain
+   * installed. No default — required only when a project opts into
+   * Docker-socket execution for a process-type command.
+   */
+  AIF_RUN_WRAPPER_IMAGE: z.string().optional(),
   TELEGRAM_BOT_API_URL: z.string().optional(),
   TELEGRAM_BOT_TOKEN: z.string().optional(),
   TELEGRAM_USER_ID: z.string().optional(),

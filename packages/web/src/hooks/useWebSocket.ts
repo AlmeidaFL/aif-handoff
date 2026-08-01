@@ -176,6 +176,23 @@ export function useWebSocket() {
         return;
       }
 
+      // Run lifecycle (Review/Done "Run" panel): run:log is a per-chunk
+      // stdout/stderr push, delivered the same bypass-react-query way as
+      // chat:token — it never touches the DB, so there's nothing to
+      // invalidate. run:status invalidates the task-run status query so the
+      // Run Console reflects starting/running/stopped/exited/error.
+      if (raw.type === "run:log" || raw.type === "run:status") {
+        window.dispatchEvent(new CustomEvent(raw.type, { detail: raw.payload }));
+        if (
+          raw.type === "run:status" &&
+          isRecord(raw.payload) &&
+          typeof raw.payload.taskId === "string"
+        ) {
+          queryClient.invalidateQueries({ queryKey: ["taskRunStatus", raw.payload.taskId] });
+        }
+        return;
+      }
+
       const data = raw as unknown as WsEvent;
 
       if (data.type === "task:moved" && isTaskPayload(data.payload)) {

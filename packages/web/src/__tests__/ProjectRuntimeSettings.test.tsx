@@ -36,11 +36,23 @@ const mockAppRuntimeDefaults = {
   },
 };
 
+const mockUpsertAgentCustomization = {
+  mutateAsync: vi.fn(),
+  isPending: false,
+  isError: false,
+  error: null,
+};
+
 let mockProfiles: RuntimeProfile[] = [];
 let mockProjectProfiles: RuntimeProfile[] = [];
 
 vi.mock("@/hooks/useProjects", () => ({
   useUpdateProject: () => mockUpdateProject,
+}));
+
+vi.mock("@/hooks/useAgentCustomizations", () => ({
+  useAgentCustomizations: () => ({ data: [], isLoading: false }),
+  useUpsertAgentCustomization: () => mockUpsertAgentCustomization,
 }));
 
 vi.mock("@/hooks/useRuntimeProfiles", () => ({
@@ -118,6 +130,7 @@ const project: Project = {
   groupName: null,
   parallelEnabled: false,
   autoQueueMode: false,
+  runDockerSocketEnabled: false,
   defaultTaskRuntimeProfileId: "project-1",
   defaultPlanRuntimeProfileId: null,
   defaultReviewRuntimeProfileId: null,

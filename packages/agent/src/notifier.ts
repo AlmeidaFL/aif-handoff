@@ -94,6 +94,36 @@ export async function notifyProjectRuntimeLimitBroadcast(
   }
 }
 
+/**
+ * Relays a `run:log` or `run:status` WS event to the API for broadcast.
+ * Unlike `notifyTaskBroadcast`, the payload is carried verbatim rather than
+ * re-derived server-side from the task row — `run:log` chunks and live
+ * `run:status` transitions don't live in the DB per-line.
+ */
+export async function notifyRunBroadcast(
+  taskId: string,
+  type: "run:log" | "run:status",
+  payload: Record<string, unknown>,
+): Promise<void> {
+  const baseUrl = getEnv().API_BASE_URL;
+  const url = `${baseUrl}/tasks/${taskId}/run/broadcast`;
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: internalBroadcastHeaders(),
+      body: JSON.stringify({ type, payload }),
+    });
+    if (!res.ok) {
+      log.warn(
+        { taskId, type, status: res.status, url },
+        "Run broadcast request returned non-OK status",
+      );
+    }
+  } catch (err) {
+    log.warn({ taskId, type, err, url }, "Run broadcast request failed");
+  }
+}
+
 export async function notifyTaskBroadcast(
   taskId: string,
   type: BroadcastType = "task:updated",

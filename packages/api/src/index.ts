@@ -4,9 +4,11 @@ import { getEnv, logger } from "@aif/shared";
 import { listProjects, listStaleInProgressTasks, resetStaleQaRuns } from "@aif/data";
 import { projectsRouter } from "./routes/projects.js";
 import { tasksRouter } from "./routes/tasks.js";
+import { runRouter } from "./routes/run.js";
 import { chatRouter } from "./routes/chat.js";
 import { buildSettingsOverview, settingsRoutes } from "./routes/settings.js";
 import { runtimeProfilesRouter } from "./routes/runtimeProfiles.js";
+import { agentCustomizationsRouter } from "./routes/agentCustomizations.js";
 import { codexAuthRouter } from "./routes/codexAuth.js";
 import { setupWebSocket, closeAllWebSocketClients } from "./ws.js";
 import { requestLogger } from "./middleware/logger.js";
@@ -78,9 +80,11 @@ app.get("/settings", async (c) => {
 // Routes
 app.route("/projects", projectsRouter);
 app.route("/tasks", tasksRouter);
+app.route("/tasks", runRouter);
 app.route("/chat", chatRouter);
 app.route("/settings", settingsRoutes);
 app.route("/runtime-profiles", runtimeProfilesRouter);
+app.route("/agent-customizations", agentCustomizationsRouter);
 
 // Codex OAuth login proxy (feature-flagged; see AIF_ENABLE_CODEX_LOGIN_PROXY).
 // The /auth/codex/capabilities endpoint is always registered so the frontend can

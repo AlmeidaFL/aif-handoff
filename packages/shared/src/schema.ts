@@ -1,6 +1,11 @@
 import { sqliteTable, text, integer, real } from "drizzle-orm/sqlite-core";
 import { sql } from "drizzle-orm";
-import type { AutoQueueCommitStatus, TaskStatus } from "./types.js";
+import type {
+  AutoQueueCommitStatus,
+  TaskStatus,
+  TaskRunStatus,
+  TaskRunExecutionMode,
+} from "./types.js";
 
 export const projects = sqliteTable("projects", {
   id: text("id")
@@ -16,6 +21,9 @@ export const projects = sqliteTable("projects", {
   groupName: text("group_name"),
   parallelEnabled: integer("parallel_enabled", { mode: "boolean" }).notNull().default(false),
   autoQueueMode: integer("auto_queue_mode", { mode: "boolean" }).notNull().default(false),
+  runDockerSocketEnabled: integer("run_docker_socket_enabled", { mode: "boolean" })
+    .notNull()
+    .default(false),
   defaultTaskRuntimeProfileId: text("default_task_runtime_profile_id"),
   defaultPlanRuntimeProfileId: text("default_plan_runtime_profile_id"),
   defaultReviewRuntimeProfileId: text("default_review_runtime_profile_id"),
@@ -177,6 +185,24 @@ export const runtimeProfiles = sqliteTable("runtime_profiles", {
 
 export type RuntimeProfileRow = typeof runtimeProfiles.$inferSelect;
 export type NewRuntimeProfileRow = typeof runtimeProfiles.$inferInsert;
+
+export const agentCustomizations = sqliteTable("agent_customizations", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  projectId: text("project_id").notNull(),
+  agentRole: text("agent_role").notNull(),
+  customInstructions: text("custom_instructions").notNull().default(""),
+  createdAt: text("created_at")
+    .notNull()
+    .default(sql`(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`),
+  updatedAt: text("updated_at")
+    .notNull()
+    .default(sql`(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`),
+});
+
+export type AgentCustomizationRow = typeof agentCustomizations.$inferSelect;
+export type NewAgentCustomizationRow = typeof agentCustomizations.$inferInsert;
 
 export const chatSessions = sqliteTable("chat_sessions", {
   id: text("id")
@@ -400,3 +426,30 @@ export const codexIndexCursors = sqliteTable("codex_index_cursors", {
 
 export type CodexIndexCursorRow = typeof codexIndexCursors.$inferSelect;
 export type NewCodexIndexCursorRow = typeof codexIndexCursors.$inferInsert;
+
+/**
+ * One row per "Run" attempt from the task Review/Done panel. At most one
+ * active (non-terminal) row per project — enforced at the data layer, not
+ * here — since the spawned process/containers claim ports that a second
+ * concurrent run in the same project could collide with.
+ */
+export const taskRuns = sqliteTable("task_runs", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  taskId: text("task_id").notNull(),
+  projectId: text("project_id").notNull(),
+  status: text("status").$type<TaskRunStatus>().notNull().default("starting"),
+  command: text("command").notNull(),
+  executionMode: text("execution_mode").$type<TaskRunExecutionMode>().notNull(),
+  port: integer("port"),
+  exitCode: integer("exit_code"),
+  errorMessage: text("error_message"),
+  startedAt: text("started_at")
+    .notNull()
+    .default(sql`(strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`),
+  stoppedAt: text("stopped_at"),
+});
+
+export type TaskRunRow = typeof taskRuns.$inferSelect;
+export type NewTaskRunRow = typeof taskRuns.$inferInsert;

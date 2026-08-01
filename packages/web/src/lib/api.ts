@@ -22,6 +22,10 @@ import type {
   CreateRuntimeProfileInput,
   UpdateRuntimeProfileInput,
   RuntimeLimitSnapshot,
+  AgentCustomization,
+  CustomizableAgentRole,
+  TaskRunStatus,
+  TaskRunExecutionMode,
 } from "@aif/shared/browser";
 
 export class ApiError extends Error {
@@ -96,6 +100,9 @@ const REQUEST_TIMEOUT_MS = 15_000;
 export const PLAN_FAST_FIX_TIMEOUT_MS = 200_000;
 const CHAT_TIMEOUT_MS = 300_000;
 const IMPORT_ROADMAP_TIMEOUT_MS = 300_000;
+// /run/inspect runs a single-pass LLM subagent call synchronously (like
+// fast_fix), so it needs the same longer budget instead of the default.
+const RUN_INSPECT_TIMEOUT_MS = 200_000;
 
 export interface SettingsResponse {
   useSubagents: boolean;
@@ -464,6 +471,45 @@ export const api = {
     await request<void>(`${API_BASE}/${id}/run-qa`, { method: "POST" });
   },
 
+  startRun(id: string): Promise<{ taskRunId: string; taskId: string; status: TaskRunStatus }> {
+    console.debug("[api] POST /tasks/%s/run/start", id);
+    return request(`${API_BASE}/${id}/run/start`, { method: "POST" });
+  },
+
+  stopRun(id: string): Promise<{ ok: boolean; stopped: boolean }> {
+    console.debug("[api] POST /tasks/%s/run/stop", id);
+    return request(`${API_BASE}/${id}/run/stop`, { method: "POST" });
+  },
+
+  getRunStatus(id: string): Promise<
+    | { active: false }
+    | {
+        active: true;
+        taskId: string;
+        projectId: string;
+        command: string;
+        executionMode: TaskRunExecutionMode;
+        port: number | null;
+        logTail: string;
+      }
+  > {
+    console.debug("[api] GET /tasks/%s/run/status", id);
+    return request(`${API_BASE}/${id}/run/status`);
+  },
+
+  inspectRun(id: string): Promise<{
+    ok: boolean;
+    spec: {
+      type: TaskRunExecutionMode;
+      command: string;
+      port: number | null;
+      notes: string | null;
+    };
+  }> {
+    console.debug("[api] POST /tasks/%s/run/inspect", id);
+    return request(`${API_BASE}/${id}/run/inspect`, { method: "POST" }, RUN_INSPECT_TIMEOUT_MS);
+  },
+
   checkRoadmapStatus(projectId: string): Promise<{ exists: boolean }> {
     console.debug("[api] GET /projects/%s/roadmap/status", projectId);
     return request<{ exists: boolean }>(`/projects/${projectId}/roadmap/status`);
@@ -646,6 +692,22 @@ export const api = {
   deleteRuntimeProfile(id: string): Promise<{ success: boolean }> {
     return request(`/runtime-profiles/${id}`, {
       method: "DELETE",
+    });
+  },
+
+  // Agent customizations
+  listAgentCustomizations(projectId: string): Promise<AgentCustomization[]> {
+    return request(`/agent-customizations/${projectId}`);
+  },
+
+  upsertAgentCustomization(
+    projectId: string,
+    agentRole: CustomizableAgentRole,
+    customInstructions: string,
+  ): Promise<AgentCustomization> {
+    return request(`/agent-customizations/${projectId}/${agentRole}`, {
+      method: "PUT",
+      body: JSON.stringify({ customInstructions }),
     });
   },
 
