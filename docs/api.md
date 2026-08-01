@@ -666,6 +666,47 @@ The normalized `runtimeLimitSnapshot` object is shared across runtime-profile, t
 
 ---
 
+## Agent Customizations
+
+Per-project, append-only custom instructions for the built-in agent roles that power the pipeline. Instructions are appended to the role's `systemPromptAppend` — they can never replace the role's required output contract (e.g. the review-sidecar/security-sidecar structured findings format). Applies whether a task runs with `useSubagents` on (native `.claude/agents/` definitions) or off (skill/slash-command fallback) — same logical role either way.
+
+Customizable roles: `plan-coordinator`, `implement-coordinator`, `review-sidecar`, `security-sidecar`. `plan-polisher` and `implement-worker` are excluded — they're spawned automatically as native subagents by their parent role and inherit its instructions instead of running with their own.
+
+### List Agent Customizations
+
+```
+GET /agent-customizations/:projectId
+```
+
+**Response:** `200 OK` — array of agent customization objects for the project (empty if none saved). `404 Not Found` if the project does not exist.
+
+| Field                | Type   | Description                                |
+| -------------------- | ------ | ------------------------------------------ |
+| `id`                 | string | Customization row id                       |
+| `projectId`          | string | Owning project id                          |
+| `agentRole`          | string | One of the customizable roles listed above |
+| `customInstructions` | string | The appended instructions text             |
+| `createdAt`          | string | ISO timestamp                              |
+| `updatedAt`          | string | ISO timestamp                              |
+
+### Upsert Agent Customization
+
+```
+PUT /agent-customizations/:projectId/:agentRole
+```
+
+**Body:**
+
+```json
+{ "customInstructions": "Always flag missing rate limiting on new endpoints." }
+```
+
+`customInstructions` is a string up to 4000 characters. An empty/whitespace-only value is stored but treated as "no customization" by the agent at runtime.
+
+**Response:** `200 OK` — the created/updated customization object (same shape as above). `400 Bad Request` if `agentRole` is unknown or not customizable (response includes `customizableRoles`), or if the body fails validation. `404 Not Found` if the project does not exist.
+
+---
+
 ## Tasks
 
 ### List Tasks
