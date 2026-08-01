@@ -5,6 +5,7 @@ export {
   tasks,
   taskComments,
   runtimeProfiles,
+  agentCustomizations,
   chatSessions,
   chatMessages,
   usageEvents,
@@ -26,6 +27,8 @@ export type {
   NewTaskCommentRow,
   RuntimeProfileRow,
   NewRuntimeProfileRow,
+  AgentCustomizationRow,
+  NewAgentCustomizationRow,
   ChatSessionRow,
   NewChatSessionRow,
   ChatMessageRow,
@@ -94,6 +97,8 @@ export {
   type RuntimeProfile,
   type CreateRuntimeProfileInput,
   type UpdateRuntimeProfileInput,
+  type AgentCustomization,
+  type UpsertAgentCustomizationInput,
   type EffectiveRuntimeProfileSource,
   type EffectiveRuntimeProfileSelection,
   RuntimeLimitSource,
@@ -131,6 +136,16 @@ export {
   type WarmupProfileMode,
 } from "./constants.js";
 export { applyHumanTaskEvent, HUMAN_ACTIONS_BY_STATUS, CLEAN_STATE_RESET } from "./stateMachine.js";
+
+// Agent catalog
+export {
+  AGENT_CATALOG,
+  CUSTOMIZABLE_AGENT_ROLES,
+  isCustomizableAgentRole,
+  type AgentRole,
+  type CustomizableAgentRole,
+  type AgentCatalogEntry,
+} from "./agentCatalog.js";
 
 // Logger
 export { logger, rootLogger } from "./logger.js";

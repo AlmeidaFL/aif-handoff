@@ -19,6 +19,7 @@ import { logActivity } from "../hooks.js";
 import { executeSubagentQuery } from "../subagentQuery.js";
 import { computePendingPlanLayers, computePlanLayers } from "../planLayers.js";
 import { assertCurrentBranch, restorePersistedBranch } from "../gitBranch.js";
+import { withAgentCustomInstructions } from "../agentCustomization.js";
 
 const log = logger("implementer");
 const AGENT_NAME = "implement-coordinator";
@@ -293,7 +294,11 @@ Rework handling protocol:
     ? "\n\nREWORK MODE: A previously-completed task has been reopened. The rework comment inside the prompt is the primary instruction. Do not treat a fully-checked plan as 'nothing to do'."
     : "";
 
-  const effectiveSystemAppend = `${scopeConstraint}${reworkSystemAppend}`;
+  const effectiveSystemAppend = withAgentCustomInstructions(
+    `${scopeConstraint}${reworkSystemAppend}`,
+    task.projectId,
+    "implement-coordinator",
+  );
 
   // For coordinator mode the rework header goes at the very top of the prompt
   // so it cannot be buried below the lead line. For skill mode we keep the

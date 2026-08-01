@@ -18,6 +18,7 @@ import {
   restorePersistedBranch,
 } from "../gitBranch.js";
 import { logActivity } from "../hooks.js";
+import { withAgentCustomInstructions } from "../agentCustomization.js";
 
 const log = logger("planner");
 const AGENT_NAME = "plan-coordinator";
@@ -261,6 +262,11 @@ ${commentsForPrompt}`;
   const handoffContext = `HANDOFF_MODE: 1\nHANDOFF_TASK_ID: ${taskId}${handoffBranchLines}`;
   const scopeConstraint = `IMPORTANT: Your working directory is ${executionRoot}\nAll files must be created and modified inside this directory. Do NOT navigate to parent directories or other projects.`;
   const plannerSlashCommand = `/aif-plan ${plannerMode} @${planPath} docs:${planDocs} tests:${planTests}`;
+  const plannerSystemPromptAppend = withAgentCustomInstructions(
+    scopeConstraint,
+    task.projectId,
+    "plan-coordinator",
+  );
 
   if (task.isFix) {
     prompt = `${handoffContext}\n${scopeConstraint}\n\n${buildFixCommandText(taskContext)}`;
@@ -269,7 +275,7 @@ ${commentsForPrompt}`;
       prompt,
       requiredCapabilities: [],
       sessionReusePolicy: "resume_if_available",
-      systemPromptAppend: scopeConstraint,
+      systemPromptAppend: plannerSystemPromptAppend,
     });
   } else if (useSubagents) {
     prompt = `Plan the implementation for the following task.
@@ -297,7 +303,7 @@ Always write the final plan to @${planPath}.`;
       fallbackStrategy: "slash_command",
       executionMode: "native_subagents",
       sessionReusePolicy: "resume_if_available",
-      systemPromptAppend: scopeConstraint,
+      systemPromptAppend: plannerSystemPromptAppend,
       metadata: {
         plannerMode,
         planDocs,
@@ -313,7 +319,7 @@ ${taskContext}`;
       prompt,
       requiredCapabilities: [],
       sessionReusePolicy: "resume_if_available",
-      systemPromptAppend: scopeConstraint,
+      systemPromptAppend: plannerSystemPromptAppend,
       metadata: {
         plannerMode,
         planDocs,
