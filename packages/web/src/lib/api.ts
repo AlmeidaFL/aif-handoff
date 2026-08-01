@@ -24,6 +24,8 @@ import type {
   RuntimeLimitSnapshot,
   AgentCustomization,
   CustomizableAgentRole,
+  TaskRunStatus,
+  TaskRunExecutionMode,
 } from "@aif/shared/browser";
 
 export class ApiError extends Error {
@@ -464,6 +466,45 @@ export const api = {
 
   async runQa(id: string): Promise<void> {
     await request<void>(`${API_BASE}/${id}/run-qa`, { method: "POST" });
+  },
+
+  startRun(id: string): Promise<{ taskRunId: string; taskId: string; status: TaskRunStatus }> {
+    console.debug("[api] POST /tasks/%s/run/start", id);
+    return request(`${API_BASE}/${id}/run/start`, { method: "POST" });
+  },
+
+  stopRun(id: string): Promise<{ ok: boolean; stopped: boolean }> {
+    console.debug("[api] POST /tasks/%s/run/stop", id);
+    return request(`${API_BASE}/${id}/run/stop`, { method: "POST" });
+  },
+
+  getRunStatus(id: string): Promise<
+    | { active: false }
+    | {
+        active: true;
+        taskId: string;
+        projectId: string;
+        command: string;
+        executionMode: TaskRunExecutionMode;
+        port: number | null;
+        logTail: string;
+      }
+  > {
+    console.debug("[api] GET /tasks/%s/run/status", id);
+    return request(`${API_BASE}/${id}/run/status`);
+  },
+
+  inspectRun(id: string): Promise<{
+    ok: boolean;
+    spec: {
+      type: TaskRunExecutionMode;
+      command: string;
+      port: number | null;
+      notes: string | null;
+    };
+  }> {
+    console.debug("[api] POST /tasks/%s/run/inspect", id);
+    return request(`${API_BASE}/${id}/run/inspect`, { method: "POST" });
   },
 
   checkRoadmapStatus(projectId: string): Promise<{ exists: boolean }> {

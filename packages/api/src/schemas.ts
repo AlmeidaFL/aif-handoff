@@ -39,6 +39,7 @@ export const createProjectSchema = z.object({
   implementerMaxBudgetUsd: z.number().positive().optional(),
   reviewSidecarMaxBudgetUsd: z.number().positive().optional(),
   parallelEnabled: z.boolean().optional(),
+  runDockerSocketEnabled: z.boolean().optional(),
   defaultTaskRuntimeProfileId: z.string().min(1).nullable().optional(),
   defaultPlanRuntimeProfileId: z.string().min(1).nullable().optional(),
   defaultReviewRuntimeProfileId: z.string().min(1).nullable().optional(),
@@ -145,6 +146,18 @@ export const broadcastTaskSchema = z.object({
 
 export const autoQueueModeSchema = z.object({
   enabled: z.boolean(),
+});
+
+export const runBroadcastSchema = z.object({
+  type: z.enum(["run:log", "run:status"]),
+  payload: z.object({
+    taskId: z.string(),
+    projectId: z.string(),
+    chunk: z.string().optional(),
+    status: z.enum(["starting", "running", "stopping", "stopped", "exited", "error"]).optional(),
+    exitCode: z.number().nullable().optional(),
+    errorMessage: z.string().nullable().optional(),
+  }),
 });
 
 export const broadcastProjectSchema = z.object({

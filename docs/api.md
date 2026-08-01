@@ -1027,6 +1027,87 @@ Used by the agent process to trigger WebSocket broadcasts after updating a task.
 
 ---
 
+## Run
+
+Execute and observe a task's project after implementation, from the Review or Done tab. See [Architecture → Run pipeline](architecture.md#run-pipeline) for the `.ai-factory/HOW-TO-RUN.md` contract and the deterministic (no LLM per click) execution model. All routes below proxy to the agent's run broker (`AGENT_RUN_INTERNAL_URL`, default `http://agent:3013`) and return `502` with `{"error": "run_broker_unreachable"}` if the agent is unreachable.
+
+### Start Run
+
+```
+POST /tasks/:id/run/start
+```
+
+**Response:** `200 OK` — `{ "taskRunId": "uuid", "taskId": "uuid", "status": "running" }`.
+
+Error responses (proxied verbatim from the run broker):
+
+| Status | `error`                   | Meaning                                                                                         |
+| ------ | ------------------------- | ----------------------------------------------------------------------------------------------- |
+| `404`  | `task_not_found`          | Task doesn't exist                                                                              |
+| `404`  | `how_to_run_missing`      | No `.ai-factory/HOW-TO-RUN.md` yet — call `POST /tasks/:id/run/inspect` to bootstrap it         |
+| `409`  | `run_already_active`      | A run is already active for this project (one active run per project, not per task)             |
+| `422`  | `how_to_run_invalid`      | The file exists but is missing/malformed a required section                                     |
+| `422`  | `run_command_unavailable` | The command needs Docker-socket execution and it isn't enabled (project and/or agent-side gate) |
+| `500`  | `spawn_failed`            | The command failed to spawn                                                                     |
+
+### Stop Run
+
+```
+POST /tasks/:id/run/stop
+```
+
+Sends `SIGTERM` to the active run for the task's project, if any. **Response:** `200 OK` — `{ "ok": true, "stopped": true|false }` (`false` when nothing was active).
+
+### Run Status
+
+```
+GET /tasks/:id/run/status
+```
+
+**Response:** `200 OK`
+
+```json
+{ "active": false }
+```
+
+or, when a run is active for the task's project:
+
+```json
+{
+  "active": true,
+  "taskId": "uuid",
+  "projectId": "uuid",
+  "command": "npm start",
+  "executionMode": "process",
+  "port": 4200,
+  "logTail": "recent buffered stdout/stderr, for reconnect/replay"
+}
+```
+
+### Inspect (bootstrap / refresh HOW-TO-RUN.md)
+
+```
+POST /tasks/:id/run/inspect
+```
+
+Runs the single-pass `run-inspector` subagent to write or refresh `.ai-factory/HOW-TO-RUN.md`. Blocks until the LLM call completes (no separate polling endpoint — this is a manual, occasional action, not part of the hot Run path).
+
+**Response:** `200 OK` — `{ "ok": true, "spec": { "type": "process", "command": "npm start", "port": 4200, "notes": null } }`. `500` with `{"error": "inspect_failed", "message": "..."}` if the agent still can't produce a valid file.
+
+### Broadcast Run Update
+
+```
+POST /tasks/:id/run/broadcast
+```
+
+Internal only — used by the agent's run broker to relay `run:log`/`run:status` WebSocket events. Same internal-auth contract as `POST /tasks/:id/broadcast`, but unlike that route, the payload is forwarded verbatim rather than re-derived from the task row (`run:log` chunks and live `run:status` transitions don't live in the DB per-line).
+
+**Body:** `{ "type": "run:log" | "run:status", "payload": { ... } }` — see [WebSocket](#websocket) below for payload shapes.
+
+**Response:** `200 OK` — `{ "success": true }`.
+
+---
+
 ## Task Comments
 
 ### List Comments
@@ -1359,29 +1440,31 @@ All events are JSON with this structure:
 }
 ```
 
-| Event                             | Payload                                                                                            | Triggered By                                                                         |
-| --------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| `project:created`                 | Full project object                                                                                | `POST /projects`                                                                     |
-| `project:organization_updated`    | Full project object                                                                                | `PATCH /projects/:id/organization`                                                   |
-| `task:created`                    | Full task object                                                                                   | `POST /tasks`, `POST /projects/:id/roadmap/import`                                   |
-| `task:updated`                    | Full task object                                                                                   | `PUT /tasks/:id`, `PATCH /tasks/:id/position`, `POST /tasks/:id/events` (`fast_fix`) |
-| `task:moved`                      | Full task object                                                                                   | `POST /tasks/:id/events`                                                             |
-| `task:deleted`                    | `{ id: string }`                                                                                   | `DELETE /tasks/:id`                                                                  |
-| `task:qa_started`                 | `{ taskId, projectId, status: "started" }`                                                         | `POST /tasks/:id/run-qa`, or `approve_done` with `autoQa=true`                       |
-| `task:qa_done`                    | `{ taskId, projectId, status: "done" }`                                                            | QA pipeline finished successfully                                                    |
-| `task:qa_failed`                  | `{ taskId, projectId, status: "failed", error? }`                                                  | QA pipeline failed (runner returned `{ ok: false }`)                                 |
-| `sync:task_created`               | Full task object                                                                                   | MCP `handoff_create_task`                                                            |
-| `sync:task_updated`               | Full task object                                                                                   | MCP `handoff_update_task`, `handoff_push_plan`                                       |
-| `sync:status_changed`             | Full task object                                                                                   | MCP `handoff_sync_status`                                                            |
-| `sync:plan_pushed`                | Full task object                                                                                   | MCP `handoff_push_plan`                                                              |
-| `chat:token`                      | `{ conversationId, token }`                                                                        | `POST /chat` — streaming response tokens                                             |
-| `chat:done`                       | `{ conversationId, usage?, projectId?, taskId?, runtimeProfileId?, runtimeLimitSnapshot? }`        | `POST /chat` — stream completed                                                      |
-| `chat:error`                      | `{ conversationId, message, code, projectId?, taskId?, runtimeProfileId?, runtimeLimitSnapshot? }` | `POST /chat` — error during streaming                                                |
-| `task:scheduled_fired`            | Full task object                                                                                   | Coordinator fires a backlog task whose `scheduledAt` is due                          |
-| `project:auto_queue_mode_changed` | Full project object                                                                                | `PATCH /projects/:id/auto-queue-mode`                                                |
-| `project:auto_queue_advanced`     | `{ id: string }` (task id)                                                                         | Coordinator auto-advances the next backlog task in an auto-queue project             |
-| `project:runtime_limit_updated`   | `{ projectId, runtimeProfileId, taskId? }`                                                         | Persisted runtime-profile limit state or last usage changed                          |
-| `project:warmup_updated`          | `{ projectId, status }`                                                                            | Warmup create/delete/failure changed project warmup state                            |
+| Event                             | Payload                                                                                            | Triggered By                                                                          |
+| --------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `project:created`                 | Full project object                                                                                | `POST /projects`                                                                      |
+| `project:organization_updated`    | Full project object                                                                                | `PATCH /projects/:id/organization`                                                    |
+| `task:created`                    | Full task object                                                                                   | `POST /tasks`, `POST /projects/:id/roadmap/import`                                    |
+| `task:updated`                    | Full task object                                                                                   | `PUT /tasks/:id`, `PATCH /tasks/:id/position`, `POST /tasks/:id/events` (`fast_fix`)  |
+| `task:moved`                      | Full task object                                                                                   | `POST /tasks/:id/events`                                                              |
+| `task:deleted`                    | `{ id: string }`                                                                                   | `DELETE /tasks/:id`                                                                   |
+| `task:qa_started`                 | `{ taskId, projectId, status: "started" }`                                                         | `POST /tasks/:id/run-qa`, or `approve_done` with `autoQa=true`                        |
+| `task:qa_done`                    | `{ taskId, projectId, status: "done" }`                                                            | QA pipeline finished successfully                                                     |
+| `task:qa_failed`                  | `{ taskId, projectId, status: "failed", error? }`                                                  | QA pipeline failed (runner returned `{ ok: false }`)                                  |
+| `sync:task_created`               | Full task object                                                                                   | MCP `handoff_create_task`                                                             |
+| `sync:task_updated`               | Full task object                                                                                   | MCP `handoff_update_task`, `handoff_push_plan`                                        |
+| `sync:status_changed`             | Full task object                                                                                   | MCP `handoff_sync_status`                                                             |
+| `sync:plan_pushed`                | Full task object                                                                                   | MCP `handoff_push_plan`                                                               |
+| `chat:token`                      | `{ conversationId, token }`                                                                        | `POST /chat` — streaming response tokens                                              |
+| `chat:done`                       | `{ conversationId, usage?, projectId?, taskId?, runtimeProfileId?, runtimeLimitSnapshot? }`        | `POST /chat` — stream completed                                                       |
+| `chat:error`                      | `{ conversationId, message, code, projectId?, taskId?, runtimeProfileId?, runtimeLimitSnapshot? }` | `POST /chat` — error during streaming                                                 |
+| `task:scheduled_fired`            | Full task object                                                                                   | Coordinator fires a backlog task whose `scheduledAt` is due                           |
+| `project:auto_queue_mode_changed` | Full project object                                                                                | `PATCH /projects/:id/auto-queue-mode`                                                 |
+| `project:auto_queue_advanced`     | `{ id: string }` (task id)                                                                         | Coordinator auto-advances the next backlog task in an auto-queue project              |
+| `project:runtime_limit_updated`   | `{ projectId, runtimeProfileId, taskId? }`                                                         | Persisted runtime-profile limit state or last usage changed                           |
+| `project:warmup_updated`          | `{ projectId, status }`                                                                            | Warmup create/delete/failure changed project warmup state                             |
+| `run:log`                         | `{ taskId, projectId, chunk }`                                                                     | Run process stdout/stderr chunk (streamed, bypasses the DB — like `chat:token`)       |
+| `run:status`                      | `{ taskId, projectId, status, exitCode?, errorMessage? }`                                          | Run lifecycle transition (`starting`/`running`/`stopping`/`stopped`/`exited`/`error`) |
 
 ### Connection
 

@@ -23,6 +23,23 @@ export type AutoQueueCommitStatus =
   | "not_applicable"
   | "failed";
 
+export type TaskRunStatus = "starting" | "running" | "stopping" | "stopped" | "exited" | "error";
+export type TaskRunExecutionMode = "process" | "docker";
+
+export interface TaskRun {
+  id: string;
+  taskId: string;
+  projectId: string;
+  status: TaskRunStatus;
+  command: string;
+  executionMode: TaskRunExecutionMode;
+  port: number | null;
+  exitCode: number | null;
+  errorMessage: string | null;
+  startedAt: string;
+  stoppedAt: string | null;
+}
+
 export const AUTO_REVIEW_STRATEGIES = ["full_re_review", "closure_first"] as const;
 
 export type AutoReviewStrategy = (typeof AUTO_REVIEW_STRATEGIES)[number];
@@ -59,6 +76,10 @@ export interface Project {
   groupName: string | null;
   parallelEnabled: boolean;
   autoQueueMode: boolean;
+  /** Opt-in: lets the Run feature execute Docker/docker-compose-based commands
+   * and wrap raw commands with `docker run -p`. See docs/configuration.md —
+   * requires AIF_AGENT_DOCKER_SOCKET_ENABLED on the agent too. */
+  runDockerSocketEnabled: boolean;
   defaultTaskRuntimeProfileId?: string | null;
   defaultPlanRuntimeProfileId?: string | null;
   defaultReviewRuntimeProfileId?: string | null;
@@ -81,6 +102,7 @@ export interface CreateProjectInput {
   reviewSidecarMaxBudgetUsd?: number;
   parallelEnabled?: boolean;
   autoQueueMode?: boolean;
+  runDockerSocketEnabled?: boolean;
   defaultTaskRuntimeProfileId?: string | null;
   defaultPlanRuntimeProfileId?: string | null;
   defaultReviewRuntimeProfileId?: string | null;
@@ -406,7 +428,9 @@ export type WsEventType =
   | "task:commit_failed"
   | "task:qa_started"
   | "task:qa_done"
-  | "task:qa_failed";
+  | "task:qa_failed"
+  | "run:log"
+  | "run:status";
 
 export interface RoadmapCompletePayload {
   projectId: string;
@@ -447,6 +471,26 @@ export interface TaskQaPayload {
   error?: string;
 }
 
+/**
+ * Per-chunk raw stdout/stderr output from an active "Run" process. Pushed
+ * live, bypassing the DB — mirrors the `chat:token` streaming path rather
+ * than the coarse "changed, go refetch" pattern used elsewhere.
+ */
+export interface TaskRunLogPayload {
+  taskId: string;
+  projectId: string;
+  chunk: string;
+}
+
+/** Lifecycle of a "Run" process/container for a task's project. */
+export interface TaskRunStatusPayload {
+  taskId: string;
+  projectId: string;
+  status: TaskRunStatus;
+  exitCode?: number | null;
+  errorMessage?: string | null;
+}
+
 export interface RuntimeLimitBroadcastPayload {
   projectId: string;
   runtimeProfileId: string | null;
@@ -472,6 +516,8 @@ export interface WsEvent {
     | ChatSession
     | TaskCommitPayload
     | TaskQaPayload
+    | TaskRunLogPayload
+    | TaskRunStatusPayload
     | RuntimeLimitBroadcastPayload
     | WarmupBroadcastPayload;
 }

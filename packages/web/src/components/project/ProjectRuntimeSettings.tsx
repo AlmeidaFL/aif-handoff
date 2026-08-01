@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Select } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useUpdateProject } from "@/hooks/useProjects";
 import {
   useAppRuntimeDefaults,
@@ -53,6 +54,9 @@ export function ProjectRuntimeSettings({
   );
   const [chatDefaultId, setChatDefaultId] = useState(
     () => project.defaultChatRuntimeProfileId ?? "",
+  );
+  const [runDockerSocketEnabled, setRunDockerSocketEnabled] = useState(
+    () => project.runDockerSocketEnabled,
   );
   const [editingProfile, setEditingProfile] = useState<RuntimeProfile | null>(null);
   const [deletingProfile, setDeletingProfile] = useState<RuntimeProfile | null>(null);
@@ -131,6 +135,7 @@ export function ProjectRuntimeSettings({
           implementerMaxBudgetUsd: project.implementerMaxBudgetUsd ?? undefined,
           reviewSidecarMaxBudgetUsd: project.reviewSidecarMaxBudgetUsd ?? undefined,
           parallelEnabled: project.parallelEnabled,
+          runDockerSocketEnabled,
           defaultTaskRuntimeProfileId: taskDefaultId || null,
           defaultPlanRuntimeProfileId: planDefaultId || null,
           defaultReviewRuntimeProfileId: reviewDefaultId || null,
@@ -334,6 +339,22 @@ export function ProjectRuntimeSettings({
           />
         </div>
       </div>
+
+      <label className="flex items-start gap-2 text-xs">
+        <Checkbox
+          checked={runDockerSocketEnabled}
+          onChange={(e) => setRunDockerSocketEnabled(e.target.checked)}
+        />
+        <span>
+          Allow Docker-based Run for this project
+          <p className="mt-0.5 text-[11px] text-muted-foreground">
+            Lets the Run feature execute Docker/docker-compose commands and publish ports for raw
+            commands, so the app is reachable even when AIF itself runs in Docker. Requires
+            AIF_AGENT_DOCKER_SOCKET_ENABLED on the agent too — mounting the Docker socket is
+            equivalent to root on the host, so only enable this for projects you trust.
+          </p>
+        </span>
+      </label>
 
       <div>
         <Button size="sm" onClick={handleSaveDefaults} disabled={updateProject.isPending}>

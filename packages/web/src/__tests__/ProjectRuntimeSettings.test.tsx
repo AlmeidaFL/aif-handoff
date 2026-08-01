@@ -130,6 +130,7 @@ const project: Project = {
   groupName: null,
   parallelEnabled: false,
   autoQueueMode: false,
+  runDockerSocketEnabled: false,
   defaultTaskRuntimeProfileId: "project-1",
   defaultPlanRuntimeProfileId: null,
   defaultReviewRuntimeProfileId: null,

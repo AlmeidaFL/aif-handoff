@@ -40,6 +40,7 @@ function makeProject(overrides: Partial<Project> = {}): Project {
     groupName: null,
     parallelEnabled: false,
     autoQueueMode: false,
+    runDockerSocketEnabled: false,
     createdAt: "2026-04-16T00:00:00Z",
     updatedAt: "2026-04-16T00:00:00Z",
     ...overrides,

@@ -15,6 +15,7 @@ export {
   codexLimitHeads,
   codexLimitHistory,
   codexIndexCursors,
+  taskRuns,
 } from "./schema.js";
 export type {
   ProjectRow,
@@ -48,6 +49,8 @@ export type {
   NewCodexLimitHistoryRow,
   CodexIndexCursorRow,
   NewCodexIndexCursorRow,
+  TaskRunRow,
+  NewTaskRunRow,
 } from "./schema.js";
 
 // Types
@@ -99,6 +102,11 @@ export {
   type UpdateRuntimeProfileInput,
   type AgentCustomization,
   type UpsertAgentCustomizationInput,
+  type TaskRun,
+  type TaskRunStatus,
+  type TaskRunExecutionMode,
+  type TaskRunLogPayload,
+  type TaskRunStatusPayload,
   type EffectiveRuntimeProfileSource,
   type EffectiveRuntimeProfileSelection,
   RuntimeLimitSource,
@@ -163,6 +171,13 @@ export {
 } from "./planFile.js";
 export type { GeneratePlanPathOptions } from "./planFile.js";
 export { persistTaskPlan } from "./taskPlan.js";
+export {
+  parseHowToRunFile,
+  getHowToRunPath,
+  HOW_TO_RUN_RELATIVE_PATH,
+  type HowToRunSpec,
+  type HowToRunType,
+} from "./howToRun.js";
 
 // Path validation
 export { validateProjectRootPath } from "./pathValidation.js";
