@@ -12,6 +12,7 @@ import { TaskLog } from "./TaskLog";
 import { AgentTimeline } from "./AgentTimeline";
 import { TaskComments } from "./TaskComments";
 import { TaskQA } from "./TaskQA";
+import { RunConsole } from "./RunConsole";
 import { TaskAttachments } from "./TaskAttachments";
 import { TaskSettings } from "./TaskSettings";
 import { PlanChangeDialog } from "./PlanChangeDialog";
@@ -160,6 +161,9 @@ export function TaskDetail({ taskId, onClose }: TaskDetailProps) {
                       onRunQa={() => runQaMutation.mutate()}
                       isRunning={task.qaStatus === "running"}
                     />
+                  )}
+                  {activeTab === "run" && (task.status === "review" || task.status === "done") && (
+                    <RunConsole task={task} />
                   )}
                   {activeTab === "activity" && (
                     <Section

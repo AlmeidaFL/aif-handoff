@@ -148,6 +148,7 @@ export function updateProject(
     implementerMaxBudgetUsd?: number | null;
     reviewSidecarMaxBudgetUsd?: number | null;
     parallelEnabled?: boolean;
+    runDockerSocketEnabled?: boolean;
     defaultTaskRuntimeProfileId?: string | null;
     defaultPlanRuntimeProfileId?: string | null;
     defaultReviewRuntimeProfileId?: string | null;

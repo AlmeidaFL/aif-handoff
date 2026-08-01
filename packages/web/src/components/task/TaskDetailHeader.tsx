@@ -12,7 +12,7 @@ import { AlertBox } from "@/components/ui/alert-box";
 import { getRuntimeLimitDisplay } from "@/lib/runtimeLimits";
 import { useUsageLimitsEnabled, useQaPipelineEnabled } from "@/hooks/useSettings";
 
-export type TaskDetailTab = "implementation" | "review" | "comments" | "activity" | "qa";
+export type TaskDetailTab = "implementation" | "review" | "comments" | "activity" | "qa" | "run";
 
 const ACTION_BUTTONS_BY_STATUS: Partial<
   Record<
@@ -88,6 +88,7 @@ export function TaskDetailHeader({
     { value: "comments", label: "Comments" },
     { value: "activity", label: "Activity" },
     ...(qaPipelineEnabled ? [{ value: "qa", label: "QA" }] : []),
+    ...(task.status === "review" || task.status === "done" ? [{ value: "run", label: "Run" }] : []),
   ];
   const runtimeLimitDisplay = usageLimitsEnabled
     ? getRuntimeLimitDisplay(task.runtimeLimitSnapshot, {
