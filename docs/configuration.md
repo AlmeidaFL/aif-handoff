@@ -120,6 +120,28 @@ Optional runtime defaults:
 - `API_RUNTIME_START_TIMEOUT_MS` / `API_RUNTIME_RUN_TIMEOUT_MS` for API one-shot runtime calls
 - `MCP_PORT` must be a valid integer port (`1-65535`) anywhere HTTP MCP mode is enabled. `npm run dev` and `POST /settings/mcp/install` ignore invalid values and fall back to non-HTTP behavior; the standalone MCP HTTP server fails fast on invalid configuration.
 
+### Git / GitHub Push Credentials (Docker)
+
+Inside the `agent` container, `git push` and `gh pr create` need working GitHub
+credentials — but unlike Claude/Codex auth (`claude-auth`/`codex-auth` named
+volumes), there is no volume for `~/.gitconfig`, `~/.git-credentials`, `~/.ssh`,
+or `~/.config/gh`. Running `gh auth login` by hand inside a live container is
+lost the next time it's recreated (rebuild, `docker compose down`, etc.).
+
+Set `GH_TOKEN` (a GitHub PAT) in `.env` instead. `docker-entrypoint.sh` runs
+`gh auth setup-git` on every container start when the token is present, wiring
+git's credential helper to read it — no persisted state required, so it
+survives rebuilds. Only the `agent` image has `gh` installed; the check is a
+no-op elsewhere.
+
+Prefer a **fine-grained PAT** scoped to only the repo(s) the agent actually
+pushes to (Repository access → "Only select repositories"; Permissions →
+Contents: Read and write, Pull requests: Read and write). Fall back to a
+classic PAT with `repo` scope only if the agent's projects span multiple
+GitHub resource owners — a single fine-grained token is issued under one
+resource owner (your account or one org) and cannot grant access across
+repos owned by different accounts/orgs.
+
 ### Proxy Support
 
 Runtime adapters support the standard proxy environment variables:
