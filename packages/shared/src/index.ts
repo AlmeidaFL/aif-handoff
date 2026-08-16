@@ -174,6 +174,7 @@ export { persistTaskPlan } from "./taskPlan.js";
 export {
   parseHowToRunFile,
   getHowToRunPath,
+  syncHowToRunToProjectRoot,
   HOW_TO_RUN_RELATIVE_PATH,
   type HowToRunSpec,
   type HowToRunType,

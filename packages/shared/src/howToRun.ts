@@ -1,5 +1,5 @@
-import { existsSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 
 export const HOW_TO_RUN_RELATIVE_PATH = ".ai-factory/HOW-TO-RUN.md";
 
@@ -80,4 +80,26 @@ export function parseHowToRunFile(executionRoot: string): HowToRunSpec | null {
   const notes = extractSection(markdown, "Notes");
 
   return { type, command, port, notes: notes || null };
+}
+
+/**
+ * Copies a task's worktree-local HOW-TO-RUN.md up to the project root.
+ *
+ * The implementer subagent runs inside `task.worktreePath` and is
+ * instructed to update HOW_TO_RUN_RELATIVE_PATH there when its changes
+ * affect how the project runs (see implementer.ts's scopeConstraint
+ * prompt). But `/run/inspect` and `/run/start` always read/write the file
+ * at `project.rootPath` (it's a project-level fact, reused across every
+ * task's worktree — see runBroker.ts). Without this sync, a mid-task
+ * update to the worktree-local copy is invisible to the Run feature until
+ * the branch is merged. No-ops when there's no separate worktree (same
+ * path) or when the worktree has no HOW-TO-RUN.md of its own.
+ */
+export function syncHowToRunToProjectRoot(executionRoot: string, projectRoot: string): void {
+  if (resolve(executionRoot) === resolve(projectRoot)) return;
+  const sourcePath = getHowToRunPath(executionRoot);
+  if (!existsSync(sourcePath)) return;
+  const destPath = getHowToRunPath(projectRoot);
+  mkdirSync(dirname(destPath), { recursive: true });
+  writeFileSync(destPath, readFileSync(sourcePath));
 }

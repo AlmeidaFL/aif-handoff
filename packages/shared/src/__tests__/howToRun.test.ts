@@ -1,8 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdirSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { parseHowToRunFile, getHowToRunPath, HOW_TO_RUN_RELATIVE_PATH } from "../howToRun.js";
+import {
+  parseHowToRunFile,
+  getHowToRunPath,
+  syncHowToRunToProjectRoot,
+  HOW_TO_RUN_RELATIVE_PATH,
+} from "../howToRun.js";
 
 function writeHowToRun(projectRoot: string, content: string): void {
   mkdirSync(join(projectRoot, ".ai-factory"), { recursive: true });
@@ -122,5 +127,73 @@ describe("parseHowToRunFile", () => {
 
   it("resolves the expected relative path", () => {
     expect(getHowToRunPath(projectRoot)).toBe(join(projectRoot, HOW_TO_RUN_RELATIVE_PATH));
+  });
+});
+
+describe("syncHowToRunToProjectRoot", () => {
+  let executionRoot: string;
+  let projectRoot: string;
+
+  beforeEach(() => {
+    executionRoot = mkdtempSync(join(tmpdir(), "how-to-run-sync-worktree-"));
+    projectRoot = mkdtempSync(join(tmpdir(), "how-to-run-sync-project-"));
+  });
+
+  afterEach(() => {
+    rmSync(executionRoot, { recursive: true, force: true });
+    rmSync(projectRoot, { recursive: true, force: true });
+  });
+
+  it("copies a worktree-local HOW-TO-RUN.md up to the project root", () => {
+    writeHowToRun(
+      executionRoot,
+      ["## Type", "process", "## Command", "```bash", "npm start", "```", "## Port", "3000"].join(
+        "\n",
+      ),
+    );
+
+    syncHowToRunToProjectRoot(executionRoot, projectRoot);
+
+    expect(existsSync(getHowToRunPath(projectRoot))).toBe(true);
+    expect(readFileSync(getHowToRunPath(projectRoot), "utf8")).toBe(
+      readFileSync(getHowToRunPath(executionRoot), "utf8"),
+    );
+  });
+
+  it("overwrites an existing project-root copy with the newer worktree version", () => {
+    writeHowToRun(
+      projectRoot,
+      ["## Type", "process", "## Command", "```bash", "npm run old", "```", "## Port", "1111"].join(
+        "\n",
+      ),
+    );
+    writeHowToRun(
+      executionRoot,
+      ["## Type", "process", "## Command", "```bash", "npm run new", "```", "## Port", "2222"].join(
+        "\n",
+      ),
+    );
+
+    syncHowToRunToProjectRoot(executionRoot, projectRoot);
+
+    expect(parseHowToRunFile(projectRoot)?.command).toBe("npm run new");
+  });
+
+  it("no-ops when executionRoot and projectRoot are the same path (no separate worktree)", () => {
+    writeHowToRun(
+      projectRoot,
+      ["## Type", "docker", "## Command", "```bash", "docker compose up", "```"].join("\n"),
+    );
+    const before = readFileSync(getHowToRunPath(projectRoot), "utf8");
+
+    syncHowToRunToProjectRoot(projectRoot, projectRoot);
+
+    expect(readFileSync(getHowToRunPath(projectRoot), "utf8")).toBe(before);
+  });
+
+  it("no-ops when the worktree has no HOW-TO-RUN.md of its own", () => {
+    syncHowToRunToProjectRoot(executionRoot, projectRoot);
+
+    expect(existsSync(getHowToRunPath(projectRoot))).toBe(false);
   });
 });
