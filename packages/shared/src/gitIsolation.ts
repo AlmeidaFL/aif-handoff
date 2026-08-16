@@ -8,7 +8,7 @@ import {
   readdirSync,
   statSync,
 } from "node:fs";
-import { basename, dirname, join, resolve } from "node:path";
+import { basename, dirname, join, relative, resolve } from "node:path";
 import { logger } from "./logger.js";
 import { getProjectConfig, type AifProjectGit } from "./projectConfig.js";
 
@@ -502,6 +502,48 @@ function excludeWorktreePath(worktreePath: string, relativePath: string): void {
   appendFileSync(excludePath, `${prefix}# AIF copied planning context\n${pattern}\n`);
 }
 
+const ENV_FILE_NAME = ".env";
+// Directories never worth descending into when hunting for .env files: VCS
+// internals, dependency trees, and common build output. Not a full
+// .gitignore parse — just enough to keep the walk fast and correct on
+// arbitrary project layouts.
+const ENV_SEARCH_EXCLUDED_DIRS = new Set([
+  ".git",
+  "node_modules",
+  "dist",
+  "build",
+  ".next",
+  "bin",
+  "obj",
+  ".turbo",
+]);
+
+function findEnvFiles(rootDir: string, currentDir: string = rootDir): string[] {
+  let entries: import("node:fs").Dirent[];
+  try {
+    entries = readdirSync(currentDir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+
+  const results: string[] = [];
+  for (const entry of entries) {
+    if (entry.isDirectory()) {
+      if (ENV_SEARCH_EXCLUDED_DIRS.has(entry.name)) continue;
+      results.push(...findEnvFiles(rootDir, join(currentDir, entry.name)));
+    } else if (entry.isFile() && entry.name === ENV_FILE_NAME) {
+      results.push(relative(rootDir, join(currentDir, entry.name)));
+    }
+  }
+  return results;
+}
+
+function copyEnvFilesToWorktree(projectRoot: string, worktreePath: string): void {
+  for (const relativePath of findEnvFiles(projectRoot)) {
+    copyPathIfExists(resolve(projectRoot, relativePath), resolve(worktreePath, relativePath));
+  }
+}
+
 function copyProjectContextToWorktree(projectRoot: string, worktreePath: string): void {
   const cfg = getProjectConfig(projectRoot);
   const contextFiles = [
@@ -534,6 +576,7 @@ function copyProjectContextToWorktree(projectRoot: string, worktreePath: string)
   }
   copyLatestPatchFiles(projectRoot, worktreePath, cfg.paths.patches);
   excludeWorktreePath(worktreePath, cfg.paths.patches);
+  copyEnvFilesToWorktree(projectRoot, worktreePath);
 }
 
 export function ensureTaskWorktree(input: EnsureTaskWorktreeInput): EnsureTaskWorktreeResult {
