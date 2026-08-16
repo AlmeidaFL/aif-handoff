@@ -4,11 +4,12 @@ import { getEnv, logger } from "@aif/shared";
 import { bootstrapRuntimeRegistry } from "@aif/runtime";
 import { pollAndProcess, setRuntimeRegistry } from "./coordinator.js";
 import { flushAllActivityQueues } from "./hooks.js";
-import { notifyProjectRuntimeLimitBroadcast } from "./notifier.js";
+import { notifyProjectRuntimeLimitBroadcast, notifyRunBroadcast } from "./notifier.js";
 import { connectWakeChannel, closeWakeChannel, waitForApiReady } from "./wakeChannel.js";
 import { abortAllActiveStages } from "./stageAbort.js";
 import { startPollScheduler } from "./pollScheduler.js";
 import { startLoginBroker, type BrokerServer } from "./codex/loginBroker.js";
+import { startRunBroker, killProcessGroup, type RunBrokerServer } from "./run/runBroker.js";
 
 const log = logger("agent");
 
@@ -129,6 +130,37 @@ if (env.AIF_ENABLE_CODEX_LOGIN_PROXY) {
   log.debug("AIF_ENABLE_CODEX_LOGIN_PROXY=false — codex login broker disabled");
 }
 
+// ---------------------------------------------------------------------------
+// Run broker — always on. Docker-socket execution is separately gated by
+// AIF_AGENT_DOCKER_SOCKET_ENABLED (checked inside the broker per-run), but a
+// bare-metal / logs-only run should work out of the box with no opt-in.
+// ---------------------------------------------------------------------------
+let runBroker: RunBrokerServer | null = null;
+startRunBroker({
+  port: env.AIF_RUN_BROKER_PORT,
+  dockerSocketEnabled: env.AIF_AGENT_DOCKER_SOCKET_ENABLED,
+  wrapperImage: env.AIF_RUN_WRAPPER_IMAGE,
+  onLog: ({ taskId, projectId, chunk }) => {
+    void notifyRunBroadcast(taskId, "run:log", { taskId, projectId, chunk });
+  },
+  onStatus: ({ taskId, projectId, status, exitCode, errorMessage }) => {
+    void notifyRunBroadcast(taskId, "run:status", {
+      taskId,
+      projectId,
+      status,
+      exitCode,
+      errorMessage,
+    });
+  },
+})
+  .then((broker) => {
+    runBroker = broker;
+    log.info({ host: broker.host, port: broker.port }, "[RunBroker] listening");
+  })
+  .catch((err) => {
+    log.error({ err }, "[RunBroker] failed to start");
+  });
+
 log.info("Agent coordinator is running. Press Ctrl+C to stop.");
 
 // ---------------------------------------------------------------------------
@@ -155,6 +187,22 @@ function onShutdown(signal: string): void {
         }
       }
       void codexLoginBroker.close();
+    }
+    if (runBroker) {
+      for (const active of runBroker.runtime.getActiveRuns()) {
+        if (!active.child.killed) {
+          log.info(
+            { taskId: active.taskId, projectId: active.projectId },
+            "[RunBroker] killing active run",
+          );
+          try {
+            killProcessGroup(active.child, "SIGTERM");
+          } catch (err) {
+            log.warn({ err }, "[RunBroker] failed to kill child on shutdown");
+          }
+        }
+      }
+      void runBroker.close();
     }
     log.info("Shutdown flush complete");
   } catch (err) {

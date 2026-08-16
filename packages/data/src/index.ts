@@ -37,6 +37,7 @@ import {
   taskComments,
   tasks,
   runtimeProfiles,
+  agentCustomizations,
   chatSessions,
   chatMessages,
   usageEvents,
@@ -46,11 +47,20 @@ import {
   codexLimitHeads,
   codexLimitHistory,
   codexIndexCursors,
+  taskRuns,
+  type TaskRun,
+  type TaskRunRow,
+  type TaskRunStatus,
+  type TaskRunExecutionMode,
   type AppSettings,
   type CreateRuntimeProfileInput,
   type EffectiveRuntimeProfileSelection,
   type RuntimeProfile,
   type RuntimeProfileUsage,
+  type AgentCustomization,
+  type UpsertAgentCustomizationInput,
+  type CustomizableAgentRole,
+  type AgentCustomizationRow,
   type RuntimeLimitSnapshot,
   type RuntimeLimitWindow,
   type RuntimeLimitFutureHint,
@@ -1546,6 +1556,7 @@ export function updateProject(
     implementerMaxBudgetUsd?: number | null;
     reviewSidecarMaxBudgetUsd?: number | null;
     parallelEnabled?: boolean;
+    runDockerSocketEnabled?: boolean;
     defaultTaskRuntimeProfileId?: string | null;
     defaultPlanRuntimeProfileId?: string | null;
     defaultReviewRuntimeProfileId?: string | null;
@@ -1562,6 +1573,9 @@ export function updateProject(
     parallelEnabled: input.parallelEnabled ?? false,
     updatedAt: new Date().toISOString(),
   };
+  if (input.runDockerSocketEnabled !== undefined) {
+    patch.runDockerSocketEnabled = input.runDockerSocketEnabled;
+  }
   if (input.defaultTaskRuntimeProfileId !== undefined) {
     patch.defaultTaskRuntimeProfileId = input.defaultTaskRuntimeProfileId;
   }
@@ -2973,6 +2987,181 @@ export function clearRuntimeProfileLimitSnapshot(
 export function deleteRuntimeProfile(id: string): void {
   log.debug({ runtimeProfileId: id }, "Deleting runtime profile");
   getDb().delete(runtimeProfiles).where(eq(runtimeProfiles.id, id)).run();
+}
+
+export function toAgentCustomizationResponse(row: AgentCustomizationRow): AgentCustomization {
+  return {
+    id: row.id,
+    projectId: row.projectId,
+    agentRole: row.agentRole as CustomizableAgentRole,
+    customInstructions: row.customInstructions,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
+}
+
+export function listAgentCustomizations(projectId: string): AgentCustomizationRow[] {
+  return getDb()
+    .select()
+    .from(agentCustomizations)
+    .where(eq(agentCustomizations.projectId, projectId))
+    .orderBy(asc(agentCustomizations.agentRole))
+    .all();
+}
+
+export function listAgentCustomizationResponses(projectId: string): AgentCustomization[] {
+  return listAgentCustomizations(projectId).map(toAgentCustomizationResponse);
+}
+
+export function upsertAgentCustomization(
+  input: UpsertAgentCustomizationInput,
+): AgentCustomizationRow {
+  const now = new Date().toISOString();
+  const id = crypto.randomUUID();
+  log.debug(
+    { projectId: input.projectId, agentRole: input.agentRole },
+    "Upserting agent customization",
+  );
+  getDb()
+    .insert(agentCustomizations)
+    .values({
+      id,
+      projectId: input.projectId,
+      agentRole: input.agentRole,
+      customInstructions: input.customInstructions,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .onConflictDoUpdate({
+      target: [agentCustomizations.projectId, agentCustomizations.agentRole],
+      set: {
+        customInstructions: input.customInstructions,
+        updatedAt: now,
+      },
+    })
+    .run();
+
+  return getDb()
+    .select()
+    .from(agentCustomizations)
+    .where(
+      and(
+        eq(agentCustomizations.projectId, input.projectId),
+        eq(agentCustomizations.agentRole, input.agentRole),
+      ),
+    )
+    .get() as AgentCustomizationRow;
+}
+
+export function getAgentCustomInstructions(
+  projectId: string,
+  agentRole: CustomizableAgentRole,
+): string | null {
+  const row = getDb()
+    .select()
+    .from(agentCustomizations)
+    .where(
+      and(eq(agentCustomizations.projectId, projectId), eq(agentCustomizations.agentRole, agentRole)),
+    )
+    .get();
+  const text = row?.customInstructions?.trim();
+  return text ? text : null;
+}
+
+export function toTaskRunResponse(row: TaskRunRow): TaskRun {
+  return {
+    id: row.id,
+    taskId: row.taskId,
+    projectId: row.projectId,
+    status: row.status,
+    command: row.command,
+    executionMode: row.executionMode,
+    port: row.port,
+    exitCode: row.exitCode,
+    errorMessage: row.errorMessage,
+    startedAt: row.startedAt,
+    stoppedAt: row.stoppedAt,
+  };
+}
+
+/**
+ * At most one non-terminal ("starting" | "running" | "stopping") run per
+ * project — the spawned process/containers claim ports that a second
+ * concurrent run in the same project could collide with. Callers must check
+ * `getActiveTaskRunForProject` before calling this.
+ */
+export function createTaskRun(input: {
+  taskId: string;
+  projectId: string;
+  command: string;
+  executionMode: TaskRunExecutionMode;
+  port?: number | null;
+}): TaskRunRow {
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+  log.debug(
+    { taskId: input.taskId, projectId: input.projectId, executionMode: input.executionMode },
+    "Creating task run",
+  );
+  getDb()
+    .insert(taskRuns)
+    .values({
+      id,
+      taskId: input.taskId,
+      projectId: input.projectId,
+      status: "starting",
+      command: input.command,
+      executionMode: input.executionMode,
+      port: input.port ?? null,
+      startedAt: now,
+    })
+    .run();
+  return getDb().select().from(taskRuns).where(eq(taskRuns.id, id)).get() as TaskRunRow;
+}
+
+export function updateTaskRunStatus(
+  id: string,
+  patch: {
+    status: TaskRunStatus;
+    exitCode?: number | null;
+    errorMessage?: string | null;
+  },
+): TaskRunRow | undefined {
+  const isTerminal = patch.status === "stopped" || patch.status === "exited" || patch.status === "error";
+  getDb()
+    .update(taskRuns)
+    .set({
+      status: patch.status,
+      exitCode: patch.exitCode ?? null,
+      errorMessage: patch.errorMessage ?? null,
+      stoppedAt: isTerminal ? new Date().toISOString() : null,
+    })
+    .where(eq(taskRuns.id, id))
+    .run();
+  return getDb().select().from(taskRuns).where(eq(taskRuns.id, id)).get() as TaskRunRow | undefined;
+}
+
+export function getActiveTaskRunForProject(projectId: string): TaskRunRow | undefined {
+  return getDb()
+    .select()
+    .from(taskRuns)
+    .where(
+      and(
+        eq(taskRuns.projectId, projectId),
+        inArray(taskRuns.status, ["starting", "running", "stopping"]),
+      ),
+    )
+    .get();
+}
+
+export function getLatestTaskRunForTask(taskId: string): TaskRunRow | undefined {
+  return getDb()
+    .select()
+    .from(taskRuns)
+    .where(eq(taskRuns.taskId, taskId))
+    .orderBy(desc(taskRuns.startedAt))
+    .limit(1)
+    .get();
 }
 
 export function isRuntimeProfileVisibleToProject(input: {

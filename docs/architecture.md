@@ -158,6 +158,79 @@ This makes parallelism explicit:
 
 All agents are defined as markdown files in `.claude/agents/*.md` and loaded by runtimes that support agent definitions (e.g. Claude adapter via `settingSources: ["project"]`). The `agent` package orchestrates _when_ to invoke them; the markdown files define _what_ they do. For runtimes without agent definition support, the prompt policy falls back to slash-command injection.
 
+## Run Pipeline
+
+The **Run** feature (Review/Done tab) executes a task's project — not just plans/implements/reviews it — so a human can confirm the result actually works, with live stdout/stderr and a Stop button. Full endpoint/event reference: [API Reference → Run](api.md#run); env vars and the security trade-off: [Configuration → Run feature](configuration.md#run-feature).
+
+### The `.ai-factory/HOW-TO-RUN.md` contract
+
+"How to run this project" is persisted as a real file in the repo, `.ai-factory/HOW-TO-RUN.md` — the same convention as `PLAN.md`/`ROADMAP.md` — not a DB-cached value. Fixed sections, parsed by `packages/shared/src/howToRun.ts`:
+
+```markdown
+## Type
+
+process
+
+## Command
+
+\`\`\`bash
+npm start
+\`\`\`
+
+## Port
+
+4200
+
+## Notes
+
+Optional free-form notes.
+```
+
+- `Type` is `process` (a raw command — needs `Port` so it can be published) or `docker` (a `docker`/`docker compose` invocation — it defines its own ports).
+- `Command` must be foreground/blocking (no `-d`, no daemonizing) so start/stop and live log streaming map onto one child-process lifecycle.
+
+Because it's a file, "Run" just re-reads and re-parses it on every click — cheap, deterministic, always current for whatever branch/worktree the task is on. No DB caching, no staleness-detection heuristic. Two things keep it accurate over time:
+
+1. **`implement-coordinator`** is instructed (`packages/agent/src/subagents/implementer.ts`) to update the file whenever its changes affect how the project builds/migrates/runs — the same pattern it already uses for plan-checklist state, not a separate mechanism.
+2. **`run-inspector`** (`packages/agent/src/run/runInspector.ts`) is a single-pass subagent query (via `executeSubagentQuery`, the same universal entry point every other subagent uses) that inspects the repo and writes the file from scratch. It runs once to bootstrap a project that doesn't have the file yet, or on-demand via "Re-inspect" — never automatically on every run.
+
+### Broker architecture
+
+Mirrors the existing Codex login broker (`packages/agent/src/codex/loginBroker.ts`): a small Hono app inside `@aif/agent` (`packages/agent/src/run/runBroker.ts`, port `AIF_RUN_BROKER_PORT`, default 3013) owns the process lifecycle; `@aif/api` (`packages/api/src/routes/run.ts`) is a thin proxy reachable at `AGENT_RUN_INTERNAL_URL`. At most one active run per **project** (not per task) — a second run in the same project while one is active gets `409`, since the spawned process/containers claim ports a concurrent run could collide with.
+
+```
+Browser ──POST /tasks/:id/run/start──► api ──proxy──► agent (run broker)
+                                                            │
+                                                            ▼
+                                              parse .ai-factory/HOW-TO-RUN.md
+                                                            │
+                                                            ▼
+                                                  spawn(command, cwd=executionRoot)
+                                                            │
+                                              stdout/stderr ─┴─► notifyRunBroadcast()
+                                                                        │
+                                                                        ▼
+                                                        api broadcasts run:log / run:status
+                                                                        │
+                                                                        ▼
+                                                              Browser (RunConsole, live)
+```
+
+`executionRoot` is `task.worktreePath ?? project.rootPath` — the same idiom used throughout `coordinator.ts`, not a new helper. Two safety nets, both via `withProcessTimeouts` (`packages/runtime/src/timeouts.ts`) plus a custom repeating idle timer: an idle timeout (default 30 min with no output) and a hard max-runtime ceiling (default 6h). The Stop button and both timeouts send `SIGTERM`, not `SIGKILL`, so `docker compose up` running in the foreground can bring its containers down cleanly.
+
+### Execution modes and reachability
+
+The process runs wherever `@aif/agent` runs. On a bare-metal deploy this is a non-issue — same as `implement-coordinator`'s existing shell access, ports are reachable exactly like running the command yourself. On a Dockerized deploy, the `agent` container is network-isolated by default, so a raw `process`-type command's port isn't reachable from the browser without opting into Docker-socket execution.
+
+| `HOW-TO-RUN.md` `Type` | Docker-socket execution off                                 | Docker-socket execution on (both gates)                                                                                                                                                                                                                       |
+| ---------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `process`              | Spawned directly. Logs work; host reachability not promised | Wrapped in `docker run --rm -p <port>:<port> -v <executionRoot>:/workspace -w /workspace <AIF_RUN_WRAPPER_IMAGE> sh -c "<command>"` — reuses the agent's own image, so toolchain parity with what `implement-coordinator` can already build/run is guaranteed |
+| `docker`               | Spawned as-is; fails if the socket isn't mounted            | Spawned as-is — talks to the **host's real Docker daemon** through the mounted socket, so `docker compose`-defined ports publish normally on the host, exactly as if run by hand. No wrapping needed                                                          |
+
+Deliberately uses explicit `-p` port publishing, never `--network host` — the latter is unreliable on Docker Desktop for Windows/Mac (it shares a VM's network, not the actual host's), while `-p` publishing works identically everywhere Docker Desktop runs.
+
+**Security:** enabling Docker-socket execution (`AIF_AGENT_DOCKER_SOCKET_ENABLED` on the agent, plus a project's own opt-in toggle — both required) gives the `agent` container root-equivalent control of the host. Combined with the agent's existing LLM-driven shell access, this raises the blast radius of a prompt-injection or runaway-agent scenario from "contained to the worktree" to "full host compromise." It is a deliberate, per-project, off-by-default trade-off — see [Configuration → Run feature](configuration.md#run-feature) for the full reasoning.
+
 ## Task State Machine
 
 Defined in `packages/shared/src/stateMachine.ts`. Human actions available per status:

@@ -1,6 +1,7 @@
-import ReactMarkdown from "react-markdown";
+import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { cn } from "@/lib/utils";
+import { MermaidDiagram } from "@/components/ui/mermaid-diagram";
 
 interface MarkdownProps {
   content: string;
@@ -15,10 +16,28 @@ function stripHtmlComments(text: string): string {
   return text.replace(/<!--[\s\S]*?-->/g, "");
 }
 
+function extractText(children: React.ReactNode): string {
+  if (typeof children === "string") return children;
+  if (Array.isArray(children)) return children.map(extractText).join("");
+  return "";
+}
+
+const markdownComponents: Components = {
+  code({ className: codeClassName, children }) {
+    const languageMatch = /language-(\w+)/.exec(codeClassName ?? "");
+    if (languageMatch?.[1] === "mermaid") {
+      return <MermaidDiagram code={extractText(children).replace(/\n$/, "")} />;
+    }
+    return <code className={codeClassName}>{children}</code>;
+  },
+};
+
 export function Markdown({ content, className }: MarkdownProps) {
   return (
     <div className={cn(baseMarkdownClassName, className)}>
-      <ReactMarkdown remarkPlugins={[remarkGfm]}>{stripHtmlComments(content)}</ReactMarkdown>
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+        {stripHtmlComments(content)}
+      </ReactMarkdown>
     </div>
   );
 }

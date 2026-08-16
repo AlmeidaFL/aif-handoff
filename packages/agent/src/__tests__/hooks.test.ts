@@ -83,6 +83,9 @@ function makeEnv(overrides: Record<string, unknown> = {}) {
     AIF_ENABLE_CODEX_LOGIN_PROXY: false,
     AIF_CODEX_LOGIN_BROKER_PORT: 3010,
     AGENT_INTERNAL_URL: "http://agent:3010",
+    AIF_RUN_BROKER_PORT: 3013,
+    AGENT_RUN_INTERNAL_URL: "http://agent:3013",
+    AIF_AGENT_DOCKER_SOCKET_ENABLED: false,
     ...overrides,
   };
 }

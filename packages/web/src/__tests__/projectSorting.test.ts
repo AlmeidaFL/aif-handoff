@@ -28,6 +28,7 @@ function project(id: string, name: string, pinnedAt: string | null = null): Proj
     groupName: null,
     parallelEnabled: false,
     autoQueueMode: false,
+    runDockerSocketEnabled: false,
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
   };

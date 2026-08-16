@@ -13,12 +13,14 @@ import {
   formatAttachmentsForPrompt,
   looksLikeFullPlanUpdate,
   getProjectConfig,
+  HOW_TO_RUN_RELATIVE_PATH,
 } from "@aif/shared";
 import { createRuntimeWorkflowSpec } from "@aif/runtime";
 import { logActivity } from "../hooks.js";
 import { executeSubagentQuery } from "../subagentQuery.js";
 import { computePendingPlanLayers, computePlanLayers } from "../planLayers.js";
 import { assertCurrentBranch, restorePersistedBranch } from "../gitBranch.js";
+import { withAgentCustomInstructions } from "../agentCustomization.js";
 
 const log = logger("implementer");
 const AGENT_NAME = "implement-coordinator";
@@ -244,7 +246,23 @@ export async function runImplementer(taskId: string, projectRoot: string): Promi
   log.info({ taskId, title: task.title, useSubagents }, "Starting implementation stage");
 
   const scopeConstraint = `IMPORTANT: Your working directory is ${projectRoot}
-All files must be created and modified inside this directory. Do NOT create files outside of it.`;
+All files must be created and modified inside this directory. Do NOT create files outside of it.
+
+If your changes affect how this project is built, migrated, or run (new dependencies, new/changed scripts, new required env vars, new services), update ${HOW_TO_RUN_RELATIVE_PATH} to match. It powers the "Run" feature, which executes the exact command in that file with no LLM involved — a stale command there will fail silently later. Use this format (create the file if it doesn't exist and your changes make it clear how to run the project; otherwise leave it alone):
+
+## Type
+process | docker
+
+## Command
+\`\`\`bash
+<a single foreground/blocking command — no -d, no daemonizing>
+\`\`\`
+
+## Port
+<required only when Type is process; a single integer>
+
+## Notes
+<optional>`;
   const implementSlashCommand = `/aif-implement ${planSection}`;
   const handoffContext = `HANDOFF_MODE: 1
 HANDOFF_TASK_ID: ${taskId}
@@ -293,7 +311,11 @@ Rework handling protocol:
     ? "\n\nREWORK MODE: A previously-completed task has been reopened. The rework comment inside the prompt is the primary instruction. Do not treat a fully-checked plan as 'nothing to do'."
     : "";
 
-  const effectiveSystemAppend = `${scopeConstraint}${reworkSystemAppend}`;
+  const effectiveSystemAppend = withAgentCustomInstructions(
+    `${scopeConstraint}${reworkSystemAppend}`,
+    task.projectId,
+    "implement-coordinator",
+  );
 
   // For coordinator mode the rework header goes at the very top of the prompt
   // so it cannot be buried below the lead line. For skill mode we keep the

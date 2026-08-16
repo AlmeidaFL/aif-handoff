@@ -21,6 +21,7 @@ const emptyProject: Project = {
   groupName: null,
   autoQueueMode: false,
   parallelEnabled: false,
+  runDockerSocketEnabled: false,
   defaultTaskRuntimeProfileId: null,
   defaultPlanRuntimeProfileId: null,
   defaultReviewRuntimeProfileId: null,
