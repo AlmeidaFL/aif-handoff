@@ -264,16 +264,22 @@ function createBrokerApp(ctx: BrokerContext): Hono {
     const project = ctx.data.findProjectById(projectId);
     if (!project) return c.json({ error: "project_not_found" }, 404);
 
-    const executionRoot = task.worktreePath ?? project.rootPath;
+    // HOW-TO-RUN.md documents how to run the PROJECT (which script, which
+    // port, docker vs process) — that's a project-level fact, not a
+    // task-level one, since it doesn't change per task worktree/branch. It's
+    // always (re)inspected and read at the project root, never at the task's
+    // worktree, so every task in a project reuses the same inspection instead
+    // of paying for a fresh LLM run each time.
+    const howToRunRoot = project.rootPath;
 
     try {
-      await ctx.options.inspectFn(taskId, executionRoot);
+      await ctx.options.inspectFn(taskId, howToRunRoot);
     } catch (err) {
       log.error({ err, taskId, projectId }, "[RunBroker] run-inspector failed");
       return c.json({ error: "inspect_failed", message: String(err) }, 500);
     }
 
-    const spec = parseHowToRunFile(executionRoot);
+    const spec = parseHowToRunFile(howToRunRoot);
     return c.json({ ok: true, spec });
   });
 
@@ -299,11 +305,15 @@ function createBrokerApp(ctx: BrokerContext): Hono {
     const project = ctx.data.findProjectById(projectId);
     if (!project) return c.json({ error: "project_not_found" }, 404);
 
+    // The run COMMAND still executes in the task's own worktree (its branch,
+    // its uncommitted changes) — only the HOW-TO-RUN.md *instructions* are
+    // shared at the project level (see /run/inspect above).
     const executionRoot = task.worktreePath ?? project.rootPath;
+    const howToRunRoot = project.rootPath;
 
     let spec: HowToRunSpec | null;
     try {
-      spec = parseHowToRunFile(executionRoot);
+      spec = parseHowToRunFile(howToRunRoot);
     } catch (err) {
       log.warn({ err, taskId, projectId }, "[RunBroker] HOW-TO-RUN.md is invalid");
       return c.json({ error: "how_to_run_invalid", message: String(err) }, 422);
