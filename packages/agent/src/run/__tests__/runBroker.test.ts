@@ -436,4 +436,128 @@ describe("runBroker HTTP surface", () => {
     });
     expect(res.status).toBe(500);
   });
+
+  describe("HOW-TO-RUN.md root vs run-command root decoupling", () => {
+    // HOW-TO-RUN.md is a project-level fact (which script, which port, docker
+    // vs process) — it must always be (re)inspected and read at
+    // project.rootPath, never at the task's own worktree, so every task
+    // reuses one inspection per project instead of re-triggering the LLM
+    // inspector per worktree. The run COMMAND itself must still execute in
+    // the task's own worktree. These tests set worktreePath !== rootPath so
+    // a regression collapsing the two roots back together would be caught.
+    let worktreePath: string;
+
+    beforeEach(() => {
+      worktreePath = mkdtempSync(join(tmpdir(), "run-broker-worktree-"));
+    });
+
+    afterEach(() => {
+      rmSync(worktreePath, { recursive: true, force: true });
+    });
+
+    it("/run/inspect calls inspectFn with project.rootPath, not task.worktreePath", async () => {
+      const { layer } = fakeDataLayer();
+      layer.findTaskById = vi.fn(() => ({
+        id: "task-1",
+        projectId: "proj-1",
+        worktreePath,
+      })) as unknown as typeof import("@aif/data").findTaskById;
+      layer.findProjectById = vi.fn(() => ({
+        id: "proj-1",
+        rootPath: projectRoot,
+        runDockerSocketEnabled: false,
+      })) as unknown as typeof import("@aif/data").findProjectById;
+
+      const inspectFn = vi.fn(async () => {
+        writeHowToRun(projectRoot, PROCESS_SPEC_MD);
+      });
+      const runtime = createRunBrokerRuntime({ data: layer, inspectFn });
+
+      const res = await runtime.app.request("/run/inspect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ taskId: "task-1", projectId: "proj-1" }),
+      });
+
+      expect(res.status).toBe(200);
+      // Inspected at the project root — never at the task worktree, even
+      // though worktreePath is set and differs from rootPath.
+      expect(inspectFn).toHaveBeenCalledWith("task-1", projectRoot);
+      expect(inspectFn).not.toHaveBeenCalledWith("task-1", worktreePath);
+    });
+
+    it("/run/start reads HOW-TO-RUN.md from project.rootPath even when only the worktree exists on disk", async () => {
+      // HOW-TO-RUN.md lives only at the project root; the task worktree has
+      // no copy at all. If /run/start read at task.worktreePath this would
+      // 404 with how_to_run_missing.
+      writeHowToRun(projectRoot, PROCESS_SPEC_MD);
+      const { layer } = fakeDataLayer();
+      layer.findTaskById = vi.fn(() => ({
+        id: "task-1",
+        projectId: "proj-1",
+        worktreePath,
+      })) as unknown as typeof import("@aif/data").findTaskById;
+      layer.findProjectById = vi.fn(() => ({
+        id: "proj-1",
+        rootPath: projectRoot,
+        runDockerSocketEnabled: false,
+      })) as unknown as typeof import("@aif/data").findProjectById;
+
+      const runtime = createRunBrokerRuntime({
+        data: layer,
+        spawnFn: vi.fn(() =>
+          createStubChild(),
+        ) as unknown as typeof import("node:child_process").spawn,
+      });
+
+      const res = await runtime.app.request("/run/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ taskId: "task-1", projectId: "proj-1" }),
+      });
+      expect(res.status).toBe(200);
+    });
+
+    it("runs the resolved command with cwd at task.worktreePath, decoupled from the project-root HOW-TO-RUN.md read", async () => {
+      // HOW-TO-RUN.md exists only at the project root (proves the spec was
+      // read from rootPath), but the spawned process must still run with
+      // cwd = task.worktreePath — proving the two roots are genuinely
+      // independent within the same request, not just that one moved.
+      writeHowToRun(projectRoot, PROCESS_SPEC_MD);
+      const { layer } = fakeDataLayer();
+      layer.findTaskById = vi.fn(() => ({
+        id: "task-1",
+        projectId: "proj-1",
+        worktreePath,
+      })) as unknown as typeof import("@aif/data").findTaskById;
+      layer.findProjectById = vi.fn(() => ({
+        id: "proj-1",
+        rootPath: projectRoot,
+        runDockerSocketEnabled: false,
+      })) as unknown as typeof import("@aif/data").findProjectById;
+
+      const spawnFn = vi.fn(() =>
+        createStubChild(),
+      ) as unknown as typeof import("node:child_process").spawn;
+      const runtime = createRunBrokerRuntime({ data: layer, spawnFn });
+
+      const res = await runtime.app.request("/run/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ taskId: "task-1", projectId: "proj-1" }),
+      });
+      expect(res.status).toBe(200);
+
+      expect(spawnFn).toHaveBeenCalledWith(
+        "sh",
+        expect.anything(),
+        expect.objectContaining({ cwd: worktreePath }),
+      );
+      expect(spawnFn).not.toHaveBeenCalledWith(
+        "sh",
+        expect.anything(),
+        expect.objectContaining({ cwd: projectRoot }),
+      );
+    });
+  });
 });

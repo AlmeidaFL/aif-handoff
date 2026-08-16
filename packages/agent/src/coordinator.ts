@@ -33,6 +33,7 @@ import {
   CLEAN_STATE_RESET,
   getHeadCommitSha,
   withTimeout,
+  syncHowToRunToProjectRoot,
   type TaskStatus,
 } from "@aif/shared";
 import { runPlanner } from "./subagents/planner.js";
@@ -563,6 +564,10 @@ async function processOneTask(task: TaskRow, stage: StatusTransition): Promise<b
     await runStageWithTimeout(stage.runner, task.id, executionRoot, stage.label);
 
     flushActivityQueue(task.id);
+
+    if (stage.label === "implementer") {
+      syncHowToRunToProjectRoot(executionRoot, project.rootPath);
+    }
 
     if (stage.label === "implementer" && task.skipReview) {
       clearTaskActiveRuntimeSelection(task.id);

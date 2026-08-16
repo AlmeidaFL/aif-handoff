@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -213,6 +213,69 @@ describe("gitIsolation", () => {
       expect(result.worktreePath).toBe(worktreePath);
       expect(existsSync(join(worktreePath, ".ai-factory", "patches", "stale.patch"))).toBe(true);
       expect(git(worktreePath, ["status", "--porcelain"])).not.toContain(".ai-factory/patches");
+    },
+    GIT_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "copies .env files (including nested ones) into a newly created worktree, skipping node_modules",
+    () => {
+      initRepo(projectRoot);
+      writeConfig(projectRoot, "git:\n  enabled: true\n  create_branches: true\n");
+      writeFileSync(join(projectRoot, ".env"), "ROOT_SECRET=1\n");
+      mkdirSync(join(projectRoot, "Infra", "docker"), { recursive: true });
+      writeFileSync(join(projectRoot, "Infra", "docker", ".env"), "NESTED_SECRET=1\n");
+      mkdirSync(join(projectRoot, "node_modules", "some-pkg"), { recursive: true });
+      writeFileSync(join(projectRoot, "node_modules", "some-pkg", ".env"), "SHOULD_NOT_COPY=1\n");
+      writeFileSync(join(projectRoot, "node_modules", ".env"), "SHOULD_NOT_COPY=1\n");
+
+      const branchName = buildBranchName("feature", "Env copy", "task-env-1");
+      const worktreePath = buildTaskWorktreePath(projectRoot, branchName, "task-env-1");
+      extraPaths.push(worktreePath);
+
+      const result = ensureTaskWorktree({
+        projectRoot,
+        taskId: "task-env-1",
+        title: "Env copy",
+      });
+
+      expect(result.action).toBe("created");
+      expect(result.worktreePath).toBe(worktreePath);
+      expect(existsSync(join(worktreePath, ".env"))).toBe(true);
+      expect(existsSync(join(worktreePath, "Infra", "docker", ".env"))).toBe(true);
+      expect(existsSync(join(worktreePath, "node_modules"))).toBe(false);
+    },
+    GIT_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "refreshes .env files when a task worktree is reused",
+    () => {
+      initRepo(projectRoot);
+      writeConfig(projectRoot, "git:\n  enabled: true\n  create_branches: true\n");
+      writeFileSync(join(projectRoot, ".env"), "ROOT_SECRET=initial\n");
+
+      const branchName = buildBranchName("feature", "Env reuse", "task-env-2");
+      const worktreePath = buildTaskWorktreePath(projectRoot, branchName, "task-env-2");
+      extraPaths.push(worktreePath);
+
+      const first = ensureTaskWorktree({
+        projectRoot,
+        taskId: "task-env-2",
+        title: "Env reuse",
+      });
+      expect(first.action).toBe("created");
+      expect(existsSync(join(worktreePath, ".env"))).toBe(true);
+
+      writeFileSync(join(projectRoot, ".env"), "ROOT_SECRET=updated\n");
+
+      const second = ensureTaskWorktree({
+        projectRoot,
+        taskId: "task-env-2",
+        title: "Env reuse",
+      });
+      expect(second.action).toBe("reused");
+      expect(readFileSync(join(worktreePath, ".env"), "utf8")).toBe("ROOT_SECRET=updated\n");
     },
     GIT_TEST_TIMEOUT_MS,
   );
