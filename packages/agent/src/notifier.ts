@@ -112,7 +112,7 @@ export async function notifyRunBroadcast(
   try {
     const res = await fetch(url, {
       method: "POST",
-      headers: internalBroadcastHeaders(),
+      headers: internalApiHeaders(),
       body: JSON.stringify({ type, payload }),
     });
     if (!res.ok) {
