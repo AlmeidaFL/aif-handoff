@@ -114,7 +114,7 @@ const metrics: TaskMetricsSummary = {
   completionRate: 0,
 };
 
-function renderHeader() {
+function renderHeader(canManageConfiguration = true) {
   return render(
     <Header
       selectedProject={project}
@@ -129,6 +129,7 @@ function renderHeader() {
       aggregateTotals={null}
       runtimeProfilesOpen={false}
       onToggleRuntimeProfiles={vi.fn()}
+      canManageConfiguration={canManageConfiguration}
     />,
   );
 }
@@ -160,6 +161,13 @@ describe("Header", () => {
     renderHeader();
 
     expect(screen.queryByRole("button", { name: "Runtime warmup" })).toBeNull();
+  });
+
+  it("hides global and runtime configuration entry points from members", () => {
+    renderHeader(false);
+
+    expect(screen.queryByRole("button", { name: "Runtime profiles" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Global settings" })).toBeNull();
   });
 
   it("hides the warmup entry point when no warmup runtime is supported", () => {

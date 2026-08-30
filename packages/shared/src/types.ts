@@ -15,6 +15,18 @@ export const TASK_STATUSES = [
 
 export type TaskStatus = (typeof TASK_STATUSES)[number];
 
+export const PARTICIPANT_ROLES = ["admin", "member"] as const;
+
+export type ParticipantRole = (typeof PARTICIPANT_ROLES)[number];
+
+export const EXECUTION_OWNERS = ["ai", "human"] as const;
+
+export type ExecutionOwner = (typeof EXECUTION_OWNERS)[number];
+
+export const AUDIT_ACTOR_KINDS = ["participant", "agent", "system", "anonymous"] as const;
+
+export type AuditActorKind = (typeof AUDIT_ACTOR_KINDS)[number];
+
 export type AutoQueueCommitStatus =
   | "pending"
   | "running"
@@ -93,9 +105,70 @@ export interface Project {
   updatedAt: string;
 }
 
-export interface CreateProjectInput {
+export interface GitHubEligibility {
+  labels: string[];
+  assignee: string | null;
+  milestone: string | null;
+}
+
+export interface GitHubRepositoryConnection {
+  projectId: string;
+  owner: string;
   name: string;
-  rootPath: string;
+  htmlUrl: string;
+  defaultBranch: string;
+  tokenEnvVar: string;
+  eligibility: GitHubEligibility;
+  enabled: boolean;
+  tokenConfigured: boolean;
+  lastSyncedAt: string | null;
+  syncError: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GitHubIssueCommentSnapshot {
+  id: number;
+  author: string;
+  body: string;
+  htmlUrl: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GitHubIssueSnapshot {
+  title: string;
+  body: string;
+  author: string;
+  labels: string[];
+  assignees: string[];
+  milestone: string | null;
+  comments: GitHubIssueCommentSnapshot[];
+}
+
+export interface GitHubIssueLink {
+  projectId: string;
+  issueNumber: number;
+  taskId: string | null;
+  nodeId: string;
+  htmlUrl: string;
+  state: "open" | "closed";
+  metadata: GitHubIssueSnapshot;
+  sourceUpdatedAt: string;
+  lastSyncedAt: string;
+  syncError: string | null;
+  prNumber: number | null;
+  prUrl: string | null;
+  prState: "open" | "closed" | "merged" | null;
+  prChecksStatus: "pending" | "success" | "failure" | null;
+  reviewState: "pending" | "approved" | "changes_requested" | null;
+  lastReviewId: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface ProjectInputSettings {
+  name: string;
   plannerMaxBudgetUsd?: number;
   planCheckerMaxBudgetUsd?: number;
   implementerMaxBudgetUsd?: number;
@@ -107,6 +180,13 @@ export interface CreateProjectInput {
   defaultPlanRuntimeProfileId?: string | null;
   defaultReviewRuntimeProfileId?: string | null;
   defaultChatRuntimeProfileId?: string | null;
+}
+
+export type CreateProjectInput = ProjectInputSettings &
+  ({ rootPath: string; githubRepository?: never } | { rootPath?: never; githubRepository: string });
+
+export interface UpdateProjectInput extends ProjectInputSettings {
+  rootPath: string;
 }
 
 export interface UpdateProjectOrganizationInput {
@@ -141,6 +221,127 @@ export interface TaskCommentAttachment {
   path?: string;
 }
 
+export interface ParticipantSummary {
+  id: string;
+  displayName: string;
+  role: ParticipantRole;
+  active: boolean;
+}
+
+export interface Participant extends ParticipantSummary {
+  username: string;
+  createdAt: string;
+  updatedAt: string;
+  deactivatedAt: string | null;
+}
+
+export interface AuthSessionState {
+  participantsModeEnabled: boolean;
+  authenticated: boolean;
+  participant: ParticipantSummary | null;
+  csrfToken: string | null;
+  expiresAt: string | null;
+}
+
+export interface CreateParticipantInput {
+  username: string;
+  displayName: string;
+  password: string;
+  role?: ParticipantRole;
+}
+
+export interface UpdateParticipantInput {
+  displayName?: string;
+  role?: ParticipantRole;
+}
+
+export interface ResetParticipantPasswordInput {
+  password: string;
+}
+
+export interface TaskAssigneeSummary {
+  participantId: string;
+  displayName: string;
+  role: ParticipantRole;
+  active: boolean;
+}
+
+export interface TaskPermissions {
+  canAssign: boolean;
+  canHandoff: boolean;
+  canSelfAssign: boolean;
+  canAct: boolean;
+  canComment: boolean;
+  permittedActions: TaskEvent[];
+}
+
+export interface AuditActor {
+  kind: AuditActorKind;
+  id: string | null;
+  displayNameSnapshot: string | null;
+}
+
+export interface TaskExecutorHistoryEntry {
+  id: string;
+  taskId: string;
+  taskTitleSnapshot: string;
+  ownershipRevision: number;
+  executionOwner: ExecutionOwner;
+  assignees: TaskAssigneeSummary[];
+  statusSnapshot: TaskStatus;
+  actor: AuditActor;
+  reason: string | null;
+  createdAt: string;
+}
+
+export interface AuditEvent {
+  id: string;
+  action: string;
+  entityType: string;
+  entityId: string | null;
+  taskId: string | null;
+  taskTitleSnapshot: string | null;
+  participantId: string | null;
+  participantDisplayNameSnapshot: string | null;
+  executionOwnerSnapshot: ExecutionOwner | null;
+  assigneesSnapshot: TaskAssigneeSummary[] | null;
+  statusSnapshot: TaskStatus | null;
+  actor: AuditActor;
+  reason: string | null;
+  metadata: Record<string, unknown> | null;
+  createdAt: string;
+}
+
+export interface TaskOwnership {
+  executionOwner: ExecutionOwner;
+  ownershipRevision: number;
+  assignees: TaskAssigneeSummary[];
+}
+
+export interface HandoffTaskInput {
+  executionOwner: ExecutionOwner;
+  assigneeIds: string[];
+  expectedOwnershipRevision: number;
+  expectedExecutionOwner?: ExecutionOwner;
+  expectedStatus?: TaskStatus;
+  reason?: string;
+  resumeAction?: TaskEvent;
+}
+
+export type TaskOwnershipConflictCode =
+  | "task_not_found"
+  | "task_locked"
+  | "ownership_revision_conflict"
+  | "inactive_assignee"
+  | "invalid_ownership_transition"
+  | "ai_handoff_required";
+
+export interface TaskOwnershipConflict {
+  code: TaskOwnershipConflictCode;
+  message: string;
+  ownership?: TaskOwnership;
+}
+
 export interface Task {
   id: string;
   projectId: string;
@@ -148,6 +349,10 @@ export interface Task {
   description: string;
   attachments?: TaskCommentAttachment[];
   autoMode: boolean;
+  executionOwner: ExecutionOwner;
+  ownershipRevision: number;
+  assignees: TaskAssigneeSummary[];
+  permissions?: TaskPermissions;
   isFix: boolean;
   plannerMode: string;
   planPath: string;
@@ -203,6 +408,7 @@ export interface Task {
   autoQueueCommitCompletedAt?: string | null;
   createdAt: string;
   updatedAt: string;
+  github?: GitHubIssueLink | null;
 }
 
 export interface TaskListItem {
@@ -211,6 +417,10 @@ export interface TaskListItem {
   title: string;
   description: string;
   autoMode: boolean;
+  executionOwner: ExecutionOwner;
+  ownershipRevision: number;
+  assignees: TaskAssigneeSummary[];
+  permissions?: TaskPermissions;
   isFix: boolean;
   status: TaskStatus;
   priority: number;
@@ -286,6 +496,8 @@ export interface TaskComment {
   id: string;
   taskId: string;
   author: "human" | "agent";
+  participantId: string | null;
+  participant: ParticipantSummary | null;
   message: string;
   attachments: TaskCommentAttachment[];
   createdAt: string;
@@ -304,6 +516,8 @@ export interface CreateTaskInput {
   description: string;
   priority?: number;
   autoMode?: boolean;
+  executionOwner?: ExecutionOwner;
+  assigneeIds?: string[];
   isFix?: boolean;
   plannerMode?: string;
   planPath?: string;
@@ -375,7 +589,14 @@ export interface UpdateTaskInput {
 export const TASK_EVENTS = [
   "start_ai",
   "accept_existing_plan",
+  "start_human_work",
+  "mark_plan_ready",
   "start_implementation",
+  "submit_implementation",
+  "complete_review",
+  "request_review_changes",
+  "pass_verification",
+  "fail_verification",
   "request_replanning",
   "fast_fix",
   "approve_done",
@@ -401,10 +622,17 @@ export interface ReorderTaskInput {
 export type WsEventType =
   | "project:created"
   | "project:organization_updated"
+  | "participant:created"
+  | "participant:updated"
+  | "participant:deactivated"
+  | "auth:session_revoked"
   | "task:created"
   | "task:updated"
   | "task:deleted"
   | "task:moved"
+  | "task:assignment_updated"
+  | "task:handoff"
+  | "task:comment_created"
   | "agent:wake"
   | "roadmap:complete"
   | "roadmap:error"
@@ -502,6 +730,31 @@ export interface WarmupBroadcastPayload {
   status: "ready" | "failed" | "partial" | "cleared" | "expired";
 }
 
+export interface ParticipantBroadcastPayload {
+  participant: ParticipantSummary;
+  actor: AuditActor;
+}
+
+export interface ParticipantSessionRevokedPayload {
+  participantId: string;
+}
+
+export interface TaskOwnershipBroadcastPayload {
+  taskId: string;
+  projectId: string;
+  ownership: TaskOwnership;
+  actor: AuditActor;
+  responsibleParticipants?: TaskAssigneeSummary[];
+}
+
+export interface TaskCommentBroadcastPayload {
+  taskId: string;
+  projectId: string;
+  comment: TaskComment;
+  actor: AuditActor;
+  responsibleParticipants?: ParticipantSummary[];
+}
+
 export interface WsEvent {
   type: WsEventType;
   payload:
@@ -519,7 +772,11 @@ export interface WsEvent {
     | TaskRunLogPayload
     | TaskRunStatusPayload
     | RuntimeLimitBroadcastPayload
-    | WarmupBroadcastPayload;
+    | WarmupBroadcastPayload
+    | ParticipantBroadcastPayload
+    | ParticipantSessionRevokedPayload
+    | TaskOwnershipBroadcastPayload
+    | TaskCommentBroadcastPayload;
 }
 
 export const RuntimeTransport = {
